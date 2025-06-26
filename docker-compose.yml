@@ -1,0 +1,38 @@
+version: "3.8"
+
+services:
+  wireguard:
+    image: lscr.io/linuxserver/wireguard:latest
+    container_name: wireguard
+    cap_add:
+      - NET_ADMIN
+      - SYS_MODULE
+    environment:
+      - PUID=1000
+      - PGID=1000
+      - TZ=Asia/Taipei
+      - SERVERURL=${CF_SUBDOMAIN}.${CF_ZONE} # 從 .env 檔案動態讀取
+      - SERVERPORT=51820
+      - PEERS=laptop,phone
+      - PEERDNS=auto
+      - INTERNAL_SUBNET=10.13.13.0
+      - ALLOWEDIPS=0.0.0.0/0, ::/0
+    volumes:
+      - ./config:/config
+      - /lib/modules:/lib/modules:ro
+    ports:
+      - "51820:51820/udp"
+    sysctls:
+      - net.ipv4.conf.all.src_valid_mark=1
+    restart: unless-stopped
+
+  cloudflare-ddns:
+    image: ghcr.io/rycochet/docker-cloudflare-ddns:latest
+    container_name: cloudflare-ddns
+    network_mode: host # 關鍵設定：使用主機網路以準確獲取 IP
+    environment:
+      - API_KEY=${CF_API_TOKEN} # 從 .env 檔案讀取
+      - ZONE=${CF_ZONE} # 從 .env 檔案讀取
+      - SUBDOMAIN=${CF_SUBDOMAIN} # 從 .env 檔案讀取
+      - PROXIED=false # VPN 流量不能通過 Cloudflare 代理
+    restart: unless-stopped 
