@@ -1,0 +1,114 @@
+name: 🚀 自動部署 QWV VPN
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+
+jobs:
+  deploy:
+    name: 部署到伺服器
+    runs-on: ubuntu-latest
+    
+    # 只在推送到 main 分支時執行部署（不在 PR 時部署）
+    if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')
+    
+    steps:
+    - name: 📥 檢出程式碼
+      uses: actions/checkout@v4
+      
+    - name: 🔧 設定 SSH
+      run: |
+        mkdir -p ~/.ssh
+        echo "${{ secrets.VPN_SSH_KEY }}" > ~/.ssh/id_rsa
+        chmod 600 ~/.ssh/id_rsa
+        ssh-keyscan -H ${{ secrets.VPN_HOST }} >> ~/.ssh/known_hosts
+        
+    - name: 🔍 驗證連線
+      run: |
+        ssh -o ConnectTimeout=10 ${{ secrets.VPN_USER }}@${{ secrets.VPN_HOST }} "echo '連線成功'"
+        
+    - name: 📋 檢查伺服器狀態
+      run: |
+        ssh ${{ secrets.VPN_USER }}@${{ secrets.VPN_HOST }} "
+          echo '檢查 Docker 狀態:'
+          docker --version
+          echo '檢查目前運行的容器:'
+          docker ps || true
+        "
+        
+    - name: 🔄 部署到伺服器
+      run: |
+        ssh ${{ secrets.VPN_USER }}@${{ secrets.VPN_HOST }} "
+          cd ${{ secrets.VPN_DEPLOY_PATH }}
+          
+          echo '📥 拉取最新程式碼...'
+          git fetch origin
+          git reset --hard origin/main
+          
+          echo '🛑 停止現有服務...'
+          ./scripts/manage.sh stop || true
+          
+          echo '📦 拉取最新映像檔...'
+          docker compose pull
+          
+          echo '🔧 設定環境變數...'
+          cat > .env << EOF
+        CF_API_TOKEN=${{ secrets.CF_API_TOKEN }}
+        CF_ZONE=${{ secrets.CF_ZONE }}
+        CF_SUBDOMAIN=${{ secrets.CF_SUBDOMAIN }}
+        EOF
+          
+          echo '🚀 啟動服務...'
+          ./scripts/manage.sh start
+          
+          echo '✅ 部署完成，等待服務啟動...'
+          sleep 10
+          
+          echo '📊 檢查服務狀態:'
+          ./scripts/manage.sh status
+        "
+        
+    - name: 🧹 清理映像檔
+      run: |
+        ssh ${{ secrets.VPN_USER }}@${{ secrets.VPN_HOST }} "
+          echo '🧹 清理未使用的映像檔...'
+          docker image prune -f || true
+        "
+        
+    - name: ✅ 部署成功通知
+      run: |
+        echo "🎉 VPN 服務已成功部署到伺服器！"
+        echo "伺服器: ${{ secrets.VPN_HOST }}"
+        echo "域名: ${{ secrets.CF_SUBDOMAIN }}.${{ secrets.CF_ZONE }}"
+        
+  validate:
+    name: 驗證配置
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: 📥 檢出程式碼
+      uses: actions/checkout@v4
+      
+    - name: 🔍 驗證 Docker Compose 語法
+      run: |
+        # 檢查 docker-compose.yml 語法
+        docker compose config
+        
+    - name: 🔍 驗證腳本語法
+      run: |
+        # 使用 shellcheck 檢查腳本
+        sudo apt-get update
+        sudo apt-get install -y shellcheck
+        shellcheck scripts/*.sh
+        
+    - name: 📋 驗證範本檔案
+      run: |
+        # 檢查必要檔案是否存在
+        test -f docker-compose.yml
+        test -f env.example
+        test -f scripts/setup.sh
+        test -f scripts/manage.sh
+        test -f README.md
+        echo "✅ 所有必要檔案都存在" 

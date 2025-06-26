@@ -1,0 +1,64 @@
+# 環境變數檔案（包含敏感資訊）
+.env
+.env.local
+.env.production
+
+# WireGuard 設定檔目錄（包含私鑰）
+config/
+*.conf
+*.key
+*.pub
+
+# 備份檔案
+backup/*.tar.gz
+backup/*.zip
+
+# 日誌檔案
+logs/*.log
+*.log
+
+# Docker 相關
+.docker/
+
+# 系統檔案
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+*~
+
+# IDE 和編輯器
+.vscode/
+.idea/
+*.iml
+*.sublime-*
+
+# 暫存檔案
+.tmp/
+temp/
+tmp/
+
+# Node.js (如果有相關工具)
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Python (如果有相關腳本)
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+
+# 憑證和金鑰檔案
+*.pem
+*.crt
+*.csr
+*.key
+id_rsa*
+id_ed25519*
+
+# 其他敏感檔案
+secrets/
+private/
+.secrets 

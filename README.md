@@ -109,8 +109,13 @@ nano .env
 # 更新系統
 sudo apt update && sudo apt upgrade -y
 
-# 安裝依賴
-sudo apt install -y docker.io docker-compose-plugin ufw git curl
+# 安裝 Docker 官方最新版本
+curl -fsSL https://get.docker.com -o get-docker.sh
+sudo sh get-docker.sh
+rm get-docker.sh
+
+# 安裝其他依賴
+sudo apt install -y ufw git curl
 
 # 設定 Docker 權限
 sudo usermod -aG docker $USER

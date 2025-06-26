@@ -20,7 +20,15 @@ sudo apt update && sudo apt upgrade -y
 
 # 安裝必要套件
 echo "🔧 安裝必要套件..."
-sudo apt install -y curl wget ufw docker.io docker-compose-plugin git
+# 安裝 Docker 官方最新版本（包含 Compose V2）
+echo "📦 安裝 Docker 官方版本..."
+curl -fsSL https://get.docker.com -o get-docker.sh
+sudo sh get-docker.sh
+rm get-docker.sh
+
+# 安裝其他必要套件
+echo "📦 安裝系統套件..."
+sudo apt install -y curl wget ufw git
 
 # 將當前用戶加入 docker 群組
 echo "👤 設定 Docker 權限..."
