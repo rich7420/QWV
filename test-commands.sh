@@ -43,7 +43,9 @@ if [ $# -eq 0 ]; then
     echo "  6-client    - 客戶端測試"
     echo "  7-function  - 功能驗證"
     echo "  8-manage    - 管理功能測試"
-    echo "  9-troubleshoot - 故障排除"
+    echo "  9-github    - GitHub Actions 測試"
+    echo "  10-troubleshoot - 故障排除"
+    echo "  validate    - 執行專案完整驗證"
     echo "  all         - 執行所有自動化測試"
     echo ""
     exit 1
@@ -78,6 +80,10 @@ case "$1" in
     "3-verify")
         test_step "階段三：驗證安裝結果"
         echo ""
+        echo "🔍 使用自動化系統檢查："
+        ./scripts/manage.sh check
+        echo ""
+        echo "📋 或手動檢查各組件："
         echo "檢查 Docker："
         docker --version
         echo ""
@@ -92,6 +98,9 @@ case "$1" in
         echo ""
         echo "檢查 Docker 群組："
         groups $USER | grep docker && success "Docker 群組正常" || error "Docker 群組未設定，請重新登入"
+        echo ""
+        echo "🧪 執行完整專案驗證："
+        ./scripts/validate.sh
         ;;
         
     "4-cloudflare")
@@ -172,21 +181,58 @@ case "$1" in
     "8-manage")
         test_step "階段八：管理功能測試"
         echo ""
-        echo "備份測試："
+        echo "🔧 驗證功能測試："
+        ./scripts/manage.sh validate
+        echo ""
+        echo "📊 系統檢查測試："
+        ./scripts/manage.sh check
+        echo ""
+        echo "💾 備份功能測試："
         ./scripts/manage.sh backup
         echo ""
         echo "檢查備份檔案："
         ls -la backup/
         echo ""
-        echo "服務重啟測試："
+        echo "👥 同儕檢視測試："
+        ./scripts/manage.sh peers
+        echo ""
+        echo "🔄 服務重啟測試："
         echo "./scripts/manage.sh restart"
         echo ""
-        echo "更新測試："
+        echo "📦 更新測試："
         echo "./scripts/manage.sh update"
         ;;
         
-    "9-troubleshoot")
-        test_step "階段九：故障排除"
+    "9-github")
+        test_step "階段九：GitHub Actions 自動部署測試"
+        echo ""
+        echo "🧪 本地驗證測試："
+        ./scripts/validate.sh
+        echo ""
+        echo "📋 GitHub Actions 設定指南："
+        echo "1. 確保專案已推送到 GitHub"
+        echo "2. 設定 GitHub Secrets (Settings → Secrets and variables → Actions)："
+        echo "   - VPN_HOST: 伺服器 IP 或域名"
+        echo "   - VPN_USER: SSH 使用者名稱"
+        echo "   - VPN_SSH_KEY: SSH 私鑰內容"
+        echo "   - VPN_PORT: SSH 連接埠 (可選，預設 22)"
+        echo ""
+        echo "3. 觸發部署測試："
+        echo 'echo "# 測試部署 $(date)" >> README.md'
+        echo "git add README.md"
+        echo 'git commit -m "test: 觸發 GitHub Actions 部署測試"'
+        echo "git push origin main"
+        echo ""
+        echo "4. 監控執行狀態："
+        echo "前往 GitHub → Actions 頁籤查看執行結果"
+        echo ""
+        echo "5. 驗證部署結果："
+        echo "部署完成後，在伺服器上執行："
+        echo "./scripts/manage.sh status"
+        ;;
+        
+    "10-troubleshoot")
+        test_step "階段十：故障排除"
         echo ""
         echo "檢查容器狀態："
         docker ps
@@ -205,6 +251,24 @@ case "$1" in
         test_step "執行自動化測試"
         echo ""
         
+        # 執行完整專案驗證
+        echo "🧪 執行完整專案驗證..."
+        if [ -f "scripts/validate.sh" ]; then
+            chmod +x scripts/validate.sh
+            ./scripts/validate.sh
+            validation_result=$?
+            if [ $validation_result -eq 0 ]; then
+                success "專案驗證通過"
+            else
+                error "專案驗證失敗，請檢查錯誤訊息"
+                echo "詳細檢查請執行: ./scripts/validate.sh"
+            fi
+        else
+            warning "找不到 scripts/validate.sh，執行基本檢查..."
+        fi
+        
+        echo ""
+        
         # 檢查基本環境
         echo "🔍 檢查基本環境..."
         docker --version >/dev/null 2>&1 && success "Docker 已安裝" || error "Docker 未安裝"
@@ -217,6 +281,7 @@ case "$1" in
         [ -f .env ] && success ".env 設定檔存在" || warning ".env 設定檔不存在，請設定環境變數"
         [ -x scripts/setup.sh ] && success "setup.sh 可執行" || error "setup.sh 無執行權限"
         [ -x scripts/manage.sh ] && success "manage.sh 可執行" || error "manage.sh 無執行權限"
+        [ -x scripts/validate.sh ] && success "validate.sh 可執行" || error "validate.sh 無執行權限"
         
                  # 檢查 Docker Compose 語法
          echo ""
@@ -253,10 +318,28 @@ case "$1" in
         success "自動化測試完成！"
         echo ""
         echo "📋 後續手動測試項目："
-        echo "1. 設定 Cloudflare API 權杖"
+        echo "1. 設定 Cloudflare API 權杖 (./test-commands.sh 4-cloudflare)"
         echo "2. 設定路由器連接埠轉送"
-        echo "3. 測試客戶端連接"
-        echo "4. 驗證流量路由"
+        echo "3. 部署 VPN 服務 (./test-commands.sh 5-deploy)"
+        echo "4. 測試客戶端連接 (./test-commands.sh 6-client)"
+        echo "5. 驗證功能正常 (./test-commands.sh 7-function)"
+        echo "6. 測試管理功能 (./test-commands.sh 8-manage)"
+        echo "7. 設定 GitHub Actions 自動部署 (./test-commands.sh 9-github)"
+        echo ""
+        echo "📚 詳細測試步驟請參考 TESTING.md"
+        ;;
+        
+    "validate")
+        test_step "執行專案完整驗證"
+        echo ""
+        if [ -f "scripts/validate.sh" ]; then
+            echo "🔍 執行專案驗證腳本..."
+            chmod +x scripts/validate.sh
+            ./scripts/validate.sh
+        else
+            error "找不到驗證腳本: scripts/validate.sh"
+            echo "請確保所有腳本檔案都存在"
+        fi
         ;;
         
     *)
@@ -265,6 +348,15 @@ case "$1" in
         exit 1
         ;;
 esac
+
+# 顯示測試完成狀態
+if [ "$1" != "all" ] && [ "$1" != "validate" ]; then
+    echo ""
+    echo "📋 測試進度追蹤："
+    echo "✅ 已完成：$1"
+    echo "📚 完整測試流程請參考 TESTING.md"
+    echo "🚀 或使用：./test-commands.sh all （執行自動化測試）"
+fi
 
 echo ""
 echo "📖 詳細測試步驟請參考 TESTING.md" 

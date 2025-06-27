@@ -325,6 +325,9 @@ nano docker-compose.yml
 # 全面系統檢查
 ./scripts/manage.sh check
 
+# 執行專案完整驗證
+./scripts/manage.sh validate
+
 # 顯示特定客戶端的 QR Code
 ./scripts/manage.sh qr <客戶端名稱>
 ```
@@ -564,16 +567,16 @@ docker compose logs > vpn_logs_$(date +%Y%m%d).txt
 
 在 GitHub 儲存庫中設定以下 Secrets（Settings → Secrets and variables → Actions）：
 
-| Secret 名稱 | 說明 | 範例值 |
-|-------------|------|--------|
-| `VPN_HOST` | 伺服器 IP 或域名 | `123.456.789.012` |
-| `VPN_USER` | SSH 用戶名 | `ubuntu` |
-| `VPN_SSH_KEY` | SSH 私鑰 | `-----BEGIN OPENSSH PRIVATE KEY-----...` |
-| `VPN_PORT` | SSH 連接埠（可選） | `22` |
-| `VPN_DEPLOY_PATH` | 部署路徑 | `/home/ubuntu/QWV-QuickWireguardVpn` |
-| `CF_API_TOKEN` | Cloudflare API 權杖 | `abc123...` |
-| `CF_ZONE` | 域名 | `yourdomain.com` |
-| `CF_SUBDOMAIN` | 子域名 | `vpn` |
+| Secret 名稱 | 說明 | 範例值 | 必要性 |
+|-------------|------|--------|---------|
+| `VPN_HOST` | 伺服器 IP 或域名 | `123.456.789.012` | ✅ 必要 |
+| `VPN_USER` | SSH 用戶名 | `ubuntu` | ✅ 必要 |
+| `VPN_SSH_KEY` | SSH 私鑰 | `-----BEGIN OPENSSH PRIVATE KEY-----...` | ✅ 必要 |
+| `VPN_PORT` | SSH 連接埠 | `22` | ⚪ 可選 |
+| `VPN_DEPLOY_PATH` | 部署路徑 | `/home/ubuntu/QWV-QuickWireguardVpn` | ✅ 必要 |
+| `CF_API_TOKEN` | Cloudflare API 權杖 | `abc123...` | ✅ 必要 |
+| `CF_ZONE` | 域名 | `yourdomain.com` | ✅ 必要 |
+| `CF_SUBDOMAIN` | 子域名 | `vpn` | ✅ 必要 |
 
 #### 2. 生成 SSH 金鑰對
 
@@ -605,12 +608,78 @@ cat ~/.ssh/vpn_deploy
 ```bash
 # 修改設定後推送
 git add .
-git commit -m "Update VPN configuration"
+git commit -m "feat: 更新 VPN 設定"
 git push origin main
 
 # 檢查部署狀態
 # 前往 GitHub → Actions 頁籤查看執行結果
 ```
+
+#### 5. GitHub Actions 故障排除
+
+<details>
+<summary>🚨 常見 GitHub Actions 錯誤及解決方案</summary>
+
+##### ❌ SSH 連線失敗
+
+**錯誤訊息**: `ssh-keyscan` 或 `Permission denied`
+
+**解決方案**:
+1. 檢查 `VPN_SSH_KEY` 是否正確（包含完整的私鑰內容）
+2. 確認 `VPN_HOST` 和 `VPN_USER` 設定正確
+3. 如果使用非標準 SSH 連接埠，設定 `VPN_PORT`
+
+```bash
+# 測試 SSH 連線
+ssh -i ~/.ssh/your_key user@host
+
+# 檢查 SSH 金鑰格式
+cat ~/.ssh/your_key | head -1  # 應顯示 -----BEGIN...
+```
+
+##### ❌ Git 操作失敗
+
+**錯誤訊息**: `Git fetch 失敗` 或 `Permission denied`
+
+**解決方案**:
+1. 確認伺服器上的 Git 儲存庫狀態
+2. 檢查部署路徑是否正確
+
+```bash
+# 在伺服器上手動檢查
+cd /path/to/deploy/directory
+git status
+git remote -v
+```
+
+##### ❌ Docker 權限問題
+
+**錯誤訊息**: `permission denied while trying to connect to the Docker daemon`
+
+**解決方案**:
+```bash
+# 在伺服器上執行
+sudo usermod -aG docker $USER
+# 重新登入生效
+```
+
+##### ❌ 服務啟動失敗
+
+**錯誤訊息**: `啟動服務失敗`
+
+**解決方案**:
+1. 檢查 `.env` 檔案內容
+2. 查看 Docker 服務狀態
+3. 檢查連接埠是否被占用
+
+```bash
+# 手動診斷
+./scripts/manage.sh check
+docker compose logs
+sudo ss -tulpn | grep 51820
+```
+
+</details>
 
 ## 📚 進階主題與最佳實踐
 

@@ -23,65 +23,139 @@ jobs:
         mkdir -p ~/.ssh
         echo "${{ secrets.VPN_SSH_KEY }}" > ~/.ssh/id_rsa
         chmod 600 ~/.ssh/id_rsa
-        ssh-keyscan -H ${{ secrets.VPN_HOST }} >> ~/.ssh/known_hosts
+        # 設定 SSH 配置，避免主機金鑰檢查
+        cat >> ~/.ssh/config << EOF
+        Host ${{ secrets.VPN_HOST }}
+            StrictHostKeyChecking no
+            UserKnownHostsFile /dev/null
+            LogLevel ERROR
+        EOF
+        # 如果需要自訂連接埠，從 secrets 讀取
+        VPN_PORT="${{ secrets.VPN_PORT }}"
+        if [ -n "$VPN_PORT" ] && [ "$VPN_PORT" != "22" ]; then
+          ssh-keyscan -p $VPN_PORT -H ${{ secrets.VPN_HOST }} >> ~/.ssh/known_hosts 2>/dev/null || true
+        else
+          ssh-keyscan -H ${{ secrets.VPN_HOST }} >> ~/.ssh/known_hosts 2>/dev/null || true
+        fi
         
     - name: 🔍 驗證連線
       run: |
-        ssh -o ConnectTimeout=10 ${{ secrets.VPN_USER }}@${{ secrets.VPN_HOST }} "echo '連線成功'"
+        # 支援自訂 SSH 連接埠
+        VPN_PORT="${{ secrets.VPN_PORT }}"
+        SSH_OPTIONS="-o ConnectTimeout=10 -o StrictHostKeyChecking=no"
+        if [ -n "$VPN_PORT" ] && [ "$VPN_PORT" != "22" ]; then
+          SSH_OPTIONS="$SSH_OPTIONS -p $VPN_PORT"
+        fi
+        ssh $SSH_OPTIONS ${{ secrets.VPN_USER }}@${{ secrets.VPN_HOST }} "echo '✅ SSH 連線成功'"
         
     - name: 📋 檢查伺服器狀態
       run: |
-        ssh ${{ secrets.VPN_USER }}@${{ secrets.VPN_HOST }} "
-          echo '檢查 Docker 狀態:'
+        VPN_PORT="${{ secrets.VPN_PORT }}"
+        SSH_OPTIONS="-o ConnectTimeout=10 -o StrictHostKeyChecking=no"
+        if [ -n "$VPN_PORT" ] && [ "$VPN_PORT" != "22" ]; then
+          SSH_OPTIONS="$SSH_OPTIONS -p $VPN_PORT"
+        fi
+        ssh $SSH_OPTIONS ${{ secrets.VPN_USER }}@${{ secrets.VPN_HOST }} "
+          echo '🔍 檢查 Docker 狀態:'
           docker --version
-          echo '檢查目前運行的容器:'
+          echo '📊 檢查目前運行的容器:'
           docker ps || true
+          echo '💽 檢查磁碟空間:'
+          df -h / || true
+          echo '💾 檢查記憶體使用:'
+          free -h || true
         "
         
     - name: 🔄 部署到伺服器
       run: |
-        ssh ${{ secrets.VPN_USER }}@${{ secrets.VPN_HOST }} "
+        VPN_PORT="${{ secrets.VPN_PORT }}"
+        SSH_OPTIONS="-o ConnectTimeout=10 -o StrictHostKeyChecking=no"
+        if [ -n "$VPN_PORT" ] && [ "$VPN_PORT" != "22" ]; then
+          SSH_OPTIONS="$SSH_OPTIONS -p $VPN_PORT"
+        fi
+        ssh $SSH_OPTIONS ${{ secrets.VPN_USER }}@${{ secrets.VPN_HOST }} "
+          set -e  # 發生錯誤立即退出
+          
+          echo '📂 切換到部署目錄...'
           cd ${{ secrets.VPN_DEPLOY_PATH }}
           
           echo '📥 拉取最新程式碼...'
-          git fetch origin
-          git reset --hard origin/main
+          git fetch origin || { echo '❌ Git fetch 失敗'; exit 1; }
+          git reset --hard origin/main || { echo '❌ Git reset 失敗'; exit 1; }
           
           echo '🛑 停止現有服務...'
-          ./scripts/manage.sh stop || true
+          ./scripts/manage.sh stop || echo '⚠️ 停止服務時出現警告（可能服務未運行）'
           
           echo '📦 拉取最新映像檔...'
-          docker compose pull
+          docker compose pull || { echo '❌ Docker compose pull 失敗'; exit 1; }
           
           echo '🔧 設定環境變數...'
-          cat > .env << EOF
+          cat > .env << 'EOF'
         CF_API_TOKEN=${{ secrets.CF_API_TOKEN }}
         CF_ZONE=${{ secrets.CF_ZONE }}
         CF_SUBDOMAIN=${{ secrets.CF_SUBDOMAIN }}
         EOF
           
-          echo '🚀 啟動服務...'
-          ./scripts/manage.sh start
+          echo '✅ 環境變數設定完成'
           
-          echo '✅ 部署完成，等待服務啟動...'
-          sleep 10
+          echo '🚀 啟動服務...'
+          ./scripts/manage.sh start || { echo '❌ 啟動服務失敗'; exit 1; }
+          
+          echo '⏳ 等待服務完全啟動...'
+          sleep 15
           
           echo '📊 檢查服務狀態:'
-          ./scripts/manage.sh status
+          ./scripts/manage.sh status || { echo '❌ 無法取得服務狀態'; exit 1; }
+          
+          echo '🔍 檢查 WireGuard 狀態:'
+          ./scripts/manage.sh peers || echo '⚠️ 暫無客戶端連接'
         "
         
     - name: 🧹 清理映像檔
       run: |
-        ssh ${{ secrets.VPN_USER }}@${{ secrets.VPN_HOST }} "
-          echo '🧹 清理未使用的映像檔...'
-          docker image prune -f || true
+        VPN_PORT="${{ secrets.VPN_PORT }}"
+        SSH_OPTIONS="-o ConnectTimeout=10 -o StrictHostKeyChecking=no"
+        if [ -n "$VPN_PORT" ] && [ "$VPN_PORT" != "22" ]; then
+          SSH_OPTIONS="$SSH_OPTIONS -p $VPN_PORT"
+        fi
+        ssh $SSH_OPTIONS ${{ secrets.VPN_USER }}@${{ secrets.VPN_HOST }} "
+          echo '🧹 清理未使用的 Docker 映像檔...'
+          docker image prune -f || echo '⚠️ 映像檔清理時出現警告'
+          
+          echo '🗑️ 清理未使用的容器...'
+          docker container prune -f || echo '⚠️ 容器清理時出現警告'
+          
+          echo '💾 檢查清理後的磁碟空間:'
+          df -h / || true
         "
         
     - name: ✅ 部署成功通知
       run: |
         echo "🎉 VPN 服務已成功部署到伺服器！"
-        echo "伺服器: ${{ secrets.VPN_HOST }}"
-        echo "域名: ${{ secrets.CF_SUBDOMAIN }}.${{ secrets.CF_ZONE }}"
+        echo "📍 伺服器: ${{ secrets.VPN_HOST }}"
+        echo "🌐 VPN 域名: ${{ secrets.CF_SUBDOMAIN }}.${{ secrets.CF_ZONE }}"
+        echo "🔌 VPN 連接埠: 51820"
+        echo "⏰ 部署時間: $(date)"
+        echo ""
+        echo "🔗 下一步: 登入伺服器執行以下指令來獲取客戶端設定："
+        echo "   ./scripts/manage.sh qr <客戶端名稱>"
+        
+    - name: 🚨 部署失敗回滾
+      if: failure()
+      run: |
+        echo "❌ 部署失敗，嘗試回滾服務..."
+        VPN_PORT="${{ secrets.VPN_PORT }}"
+        SSH_OPTIONS="-o ConnectTimeout=10 -o StrictHostKeyChecking=no"
+        if [ -n "$VPN_PORT" ] && [ "$VPN_PORT" != "22" ]; then
+          SSH_OPTIONS="$SSH_OPTIONS -p $VPN_PORT"
+        fi
+        ssh $SSH_OPTIONS ${{ secrets.VPN_USER }}@${{ secrets.VPN_HOST }} "
+          cd ${{ secrets.VPN_DEPLOY_PATH }}
+          echo '🔄 嘗試重新啟動服務...'
+          ./scripts/manage.sh restart || echo '❌ 無法重新啟動服務'
+          echo '📊 檢查服務狀態:'
+          ./scripts/manage.sh status || echo '❌ 服務異常'
+        " || echo "❌ 無法連接到伺服器進行回滾"
         
   validate:
     name: 驗證配置
@@ -91,24 +165,16 @@ jobs:
     - name: 📥 檢出程式碼
       uses: actions/checkout@v4
       
-    - name: 🔍 驗證 Docker Compose 語法
+    - name: 🔧 安裝驗證工具
       run: |
-        # 檢查 docker-compose.yml 語法
-        docker compose config
-        
-    - name: 🔍 驗證腳本語法
-      run: |
-        # 使用 shellcheck 檢查腳本
+        # 安裝 shellcheck 用於腳本檢查
         sudo apt-get update
         sudo apt-get install -y shellcheck
-        shellcheck scripts/*.sh
         
-    - name: 📋 驗證範本檔案
+    - name: 🔍 執行專案完整驗證
       run: |
-        # 檢查必要檔案是否存在
-        test -f docker-compose.yml
-        test -f env.example
-        test -f scripts/setup.sh
-        test -f scripts/manage.sh
-        test -f README.md
-        echo "✅ 所有必要檔案都存在" 
+        # 給腳本執行權限
+        chmod +x scripts/*.sh
+        
+        # 執行完整專案驗證
+        ./scripts/validate.sh 

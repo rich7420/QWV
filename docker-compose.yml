@@ -8,34 +8,87 @@ services:
     image: lscr.io/linuxserver/wireguard:latest
     container_name: wireguard
     cap_add:
-      - NET_ADMIN
-      - SYS_MODULE
+      - NET_ADMIN      # 需要網路管理權限
+      - SYS_MODULE     # 需要載入核心模組權限
     environment:
+      # 使用者和群組 ID（避免檔案權限問題）
       - PUID=1000
       - PGID=1000
+      
+      # 時區設定（確保日誌時間正確）
       - TZ=Asia/Taipei
-      - SERVERURL=${CF_SUBDOMAIN}.${CF_ZONE} # 從 .env 檔案動態讀取
-      - SERVERPORT=51820
+      
+      # WireGuard 伺服器設定
+      - SERVERURL=${CF_SUBDOMAIN}.${CF_ZONE}  # 從 .env 讀取動態域名
+      - SERVERPORT=51820                      # VPN 監聽連接埠
+      
+      # 客戶端設定（用逗號分隔）
       - PEERS=laptop,phone
+      
+      # DNS 設定（auto 使用 Docker 主機 DNS）
       - PEERDNS=auto
+      
+      # 內網子網路（避免 IP 衝突）
       - INTERNAL_SUBNET=10.13.13.0
+      
+      # 允許的 IP 範圍（0.0.0.0/0 = 全隧道模式）
       - ALLOWEDIPS=0.0.0.0/0, ::/0
+      
     volumes:
+      # WireGuard 設定檔持久化
       - ./config:/config
+      # 核心模組（唯讀）
       - /lib/modules:/lib/modules:ro
+      
     ports:
+      # 對外開放 UDP 51820 連接埠
       - "51820:51820/udp"
+      
     sysctls:
+      # 啟用特殊路由標記（WireGuard 需要）
       - net.ipv4.conf.all.src_valid_mark=1
+      
     restart: unless-stopped
+    
+    # 健康檢查（檢查 WireGuard 介面是否正常）
+    healthcheck:
+      test: ["CMD", "wg", "show"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
 
   cloudflare-ddns:
     image: ghcr.io/rycochet/docker-cloudflare-ddns:latest
     container_name: cloudflare-ddns
-    network_mode: host # 關鍵設定：使用主機網路以準確獲取 IP
+    
+    # 關鍵設定：使用主機網路以準確獲取真實公網 IP
+    # 這避免了 Docker NAT 造成的 IP 偵測問題
+    network_mode: host
+    
     environment:
-      - API_KEY=${CF_API_TOKEN} # 從 .env 檔案讀取
-      - ZONE=${CF_ZONE} # 從 .env 檔案讀取
-      - SUBDOMAIN=${CF_SUBDOMAIN} # 從 .env 檔案讀取
-      - PROXIED=false # VPN 流量不能通過 Cloudflare 代理
-    restart: unless-stopped 
+      # Cloudflare API 設定（從 .env 檔案讀取）
+      - API_KEY=${CF_API_TOKEN}    # Cloudflare API 權杖
+      - ZONE=${CF_ZONE}            # 域名 (例如: example.com)
+      - SUBDOMAIN=${CF_SUBDOMAIN}  # 子域名 (例如: vpn)
+      
+      # 代理設定：VPN 流量不能通過 Cloudflare 代理
+      - PROXIED=false
+      
+      # 可選設定
+      # - CRON=*/5 * * * *         # 自訂檢查頻率（預設 5 分鐘）
+      # - DELETE_ON_STOP=false     # 停止時不刪除 DNS 記錄
+      
+    restart: unless-stopped
+    
+    # 健康檢查（檢查 API 連線狀態）
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f https://api.cloudflare.com/client/v4/user/tokens/verify -H \"Authorization: Bearer $${API_KEY}\" || exit 1"]
+      interval: 60s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+      
+    # 依賴關係：確保 WireGuard 先啟動
+    depends_on:
+      wireguard:
+        condition: service_healthy 

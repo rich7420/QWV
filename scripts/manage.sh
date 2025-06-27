@@ -15,16 +15,17 @@ usage() {
     echo "使用方法: $0 <command>"
     echo ""
     echo "可用指令:"
-    echo "  start      啟動 VPN 服務"
-    echo "  stop       停止 VPN 服務"
-    echo "  restart    重啟 VPN 服務"
-    echo "  status     查看服務狀態"
-    echo "  logs       查看服務日誌"
-    echo "  peers      顯示連線的客戶端"
-    echo "  update     更新服務映像檔"
-    echo "  backup     備份設定檔"
-    echo "  qr <peer>  顯示客戶端 QR Code"
-    echo "  check      檢查系統狀態"
+    echo "  start        啟動 VPN 服務"
+    echo "  stop         停止 VPN 服務"
+    echo "  restart      重啟 VPN 服務"
+    echo "  status       查看服務狀態"
+    echo "  logs         查看服務日誌"
+    echo "  peers        顯示連線的客戶端"
+    echo "  update       更新服務映像檔"
+    echo "  backup       備份設定檔"
+    echo "  qr <peer>    顯示客戶端 QR Code"
+    echo "  check        檢查系統狀態"
+    echo "  validate     執行專案完整驗證"
     echo ""
 }
 
@@ -57,10 +58,28 @@ restart_services() {
 
 show_status() {
     echo "📊 服務狀態:"
-    docker compose ps
+    if docker compose ps >/dev/null 2>&1; then
+        docker compose ps
+    else
+        echo "❌ 無法取得 Docker Compose 狀態"
+        exit 1
+    fi
+    
     echo ""
     echo "🌐 系統資源:"
-    docker stats --no-stream
+    if docker stats --no-stream >/dev/null 2>&1; then
+        docker stats --no-stream
+    else
+        echo "⚠️ 無法取得容器資源使用情況"
+    fi
+    
+    echo ""
+    echo "🔗 WireGuard 介面狀態:"
+    if docker exec wireguard wg show >/dev/null 2>&1; then
+        docker exec wireguard wg show
+    else
+        echo "⚠️ WireGuard 介面未啟動或無法存取"
+    fi
 }
 
 show_logs() {
@@ -70,7 +89,32 @@ show_logs() {
 
 show_peers() {
     echo "👥 已連線的客戶端:"
-    docker exec wireguard wg show 2>/dev/null || echo "WireGuard 服務未運行或無客戶端連線"
+    
+    # 檢查容器是否運行
+    if ! docker compose ps wireguard | grep -q "Up"; then
+        echo "❌ WireGuard 容器未運行"
+        return 1
+    fi
+    
+    # 檢查 WireGuard 介面
+    peer_info=$(docker exec wireguard wg show 2>/dev/null || true)
+    if [ -n "$peer_info" ]; then
+        echo "$peer_info"
+        
+        # 統計連線數
+        peer_count=$(echo "$peer_info" | grep -c "peer:" || echo "0")
+        echo ""
+        echo "📊 連線統計: $peer_count 個客戶端"
+    else
+        echo "⚠️ WireGuard 介面未啟動或無客戶端連線"
+        echo ""
+        echo "📋 可用的客戶端設定:"
+        if [ -d "config" ]; then
+            ls config/ | grep "peer_" | sed 's/peer_/  - /' || echo "  (無)"
+        else
+            echo "  (config 目錄不存在)"
+        fi
+    fi
 }
 
 update_services() {
@@ -114,37 +158,112 @@ show_qr() {
 }
 
 check_system() {
-    echo "🔍 系統檢查:"
+    echo "🔍 系統檢查："
+    echo ""
+    
+    # 檢查必要檔案
+    echo "📁 專案檔案："
+    for file in docker-compose.yml .env; do
+        if [ -f "$file" ]; then
+            echo "✅ $file 存在"
+        else
+            echo "❌ $file 不存在"
+        fi
+    done
     echo ""
     
     # 檢查 Docker
+    echo "🐳 Docker 狀態："
     if command -v docker >/dev/null 2>&1; then
-        echo "✅ Docker 已安裝 ($(docker --version))"
+        echo "✅ Docker 已安裝 ($(docker --version | cut -d' ' -f3 | tr -d ','))"
+        
+        # 檢查 Docker 服務
+        if docker info >/dev/null 2>&1; then
+            echo "✅ Docker 服務運行中"
+        else
+            echo "❌ Docker 服務未運行"
+        fi
+        
+        # 檢查使用者權限
+        if docker ps >/dev/null 2>&1; then
+            echo "✅ Docker 權限正常"
+        else
+            echo "❌ Docker 權限不足（請將使用者加入 docker 群組）"
+        fi
     else
         echo "❌ Docker 未安裝"
     fi
+    echo ""
     
     # 檢查防火牆
+    echo "🔥 防火牆狀態："
     if command -v ufw >/dev/null 2>&1; then
         echo "✅ UFW 防火牆已安裝"
-        ufw_status=$(sudo ufw status | head -1)
+        ufw_status=$(sudo ufw status 2>/dev/null | head -1 || echo "無法取得狀態")
         echo "   狀態: $ufw_status"
+        
+        # 檢查 WireGuard 連接埠規則
+        if sudo ufw status | grep -q "51820/udp"; then
+            echo "✅ WireGuard 連接埠 51820/UDP 已開放"
+        else
+            echo "⚠️ WireGuard 連接埠 51820/UDP 未在防火牆中開放"
+        fi
     else
         echo "❌ UFW 防火牆未安裝"
     fi
+    echo ""
+    
+    # 檢查網路設定
+    echo "🌐 網路設定："
     
     # 檢查 IP 轉送
-    ip_forward=$(cat /proc/sys/net/ipv4/ip_forward)
-    if [ "$ip_forward" = "1" ]; then
-        echo "✅ IP 轉送已啟用"
+    if [ -r /proc/sys/net/ipv4/ip_forward ]; then
+        ip_forward=$(cat /proc/sys/net/ipv4/ip_forward)
+        if [ "$ip_forward" = "1" ]; then
+            echo "✅ IP 轉送已啟用"
+        else
+            echo "❌ IP 轉送未啟用"
+        fi
     else
-        echo "❌ IP 轉送未啟用"
+        echo "⚠️ 無法檢查 IP 轉送狀態"
     fi
     
-    # 檢查連接埠
+    # 檢查連接埠監聽
+    if command -v ss >/dev/null 2>&1; then
+        if ss -uln | grep -q :51820; then
+            echo "✅ WireGuard 連接埠 51820 正在監聽"
+        else
+            echo "⚠️ WireGuard 連接埠 51820 未監聽（服務可能未啟動）"
+        fi
+    elif command -v netstat >/dev/null 2>&1; then
+        if netstat -uln | grep -q :51820; then
+            echo "✅ WireGuard 連接埠 51820 正在監聽"
+        else
+            echo "⚠️ WireGuard 連接埠 51820 未監聽（服務可能未啟動）"
+        fi
+    else
+        echo "⚠️ 無法檢查連接埠狀態（缺少 ss 或 netstat）"
+    fi
     echo ""
-    echo "📡 網路檢查:"
-    netstat -uln | grep :51820 && echo "✅ WireGuard 連接埠 51820 正在監聽" || echo "❌ WireGuard 連接埠 51820 未監聽"
+    
+    # 檢查 Docker Compose 服務
+    echo "📊 服務狀態："
+    if [ -f docker-compose.yml ]; then
+        if docker compose ps >/dev/null 2>&1; then
+            docker compose ps
+        else
+            echo "⚠️ 無法取得 Docker Compose 服務狀態"
+        fi
+    else
+        echo "❌ docker-compose.yml 檔案不存在"
+    fi
+    echo ""
+    
+    # 檢查磁碟空間
+    echo "💽 系統資源："
+    df -h / | head -2
+    echo ""
+    free -h | head -2
 }
 
 case "${1:-}" in
@@ -177,6 +296,15 @@ case "${1:-}" in
         ;;
     check)
         check_system
+        ;;
+    validate)
+        if [ -f "scripts/validate.sh" ]; then
+            echo "🔍 執行專案完整驗證..."
+            bash scripts/validate.sh
+        else
+            echo "❌ 找不到驗證腳本: scripts/validate.sh"
+            exit 1
+        fi
         ;;
     *)
         usage

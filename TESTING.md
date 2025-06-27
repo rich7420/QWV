@@ -1,6 +1,6 @@
 # 🧪 QWV VPN 詳細測試步驟
 
-本文檔提供完整的測試流程，幫助您驗證 QWV VPN 專案的所有功能。
+本文檔提供完整的測試流程，幫助您驗證 QWV VPN 專案的所有功能。包含自動化驗證、手動測試和故障排除。
 
 ## 📋 測試前檢查清單
 
@@ -11,6 +11,31 @@
 - [ ] 擁有域名管理權限（建議使用 Cloudflare）
 - [ ] 路由器管理權限（用於連接埠轉送）
 - [ ] 測試用的客戶端裝置（手機、筆電等）
+
+## 🚀 快速驗證（推薦起點）
+
+### 自動化專案驗證
+
+```bash
+# 克隆專案後的第一步：執行完整驗證
+cd QWV-QuickWireguardVpn
+./scripts/validate.sh
+
+# 或使用管理腳本
+./scripts/manage.sh validate
+
+# 或使用測試腳本
+./test-commands.sh validate
+```
+
+**預期輸出**：
+- ✅ 檔案結構驗證通過
+- ✅ Docker Compose 語法正確
+- ✅ 腳本語法正確
+- ✅ 環境變數模板有效
+- ✅ GitHub Actions 工作流程正確
+- ✅ 文檔完整性檢查通過
+- ✅ 安全性檢查通過
 
 ## 🔧 階段一：環境準備與初始檢查
 
@@ -95,13 +120,26 @@ ls -la scripts/
 ### 2.2 驗證安裝結果
 
 ```bash
+# 使用自動化系統檢查
+./scripts/manage.sh check
+# 預期輸出：
+# 🔍 系統檢查：
+# 📁 專案檔案：
+# ✅ docker-compose.yml 存在
+# ✅ .env 存在
+# 🐳 Docker 狀態：
+# ✅ Docker 已安裝 (version 24.0+)
+# ✅ Docker 服務運行中
+# ✅ Docker 權限正常
+
+# 或手動檢查各個組件
 # 檢查 Docker 安裝
 docker --version
-# 預期輸出：Docker version 20.10+
+# 預期輸出：Docker version 24.0+
 
 # 檢查 Docker Compose
 docker compose version
-# 預期輸出：Docker Compose version 2.0+
+# 預期輸出：Docker Compose version 2.20+
 
 # 檢查防火牆狀態
 sudo ufw status numbered
@@ -126,6 +164,19 @@ exit
 # 重新 SSH 連線
 ssh user@your-server-ip
 cd QWV-QuickWireguardVpn
+```
+
+### 2.3 執行完整專案驗證
+
+```bash
+# 執行綜合驗證腳本
+./scripts/validate.sh
+
+# 如果發現問題，查看詳細錯誤
+echo $?  # 0 表示成功，1 表示有問題
+
+# 使用測試腳本進行分階段驗證
+./test-commands.sh 3-verify
 ```
 
 ## 🌐 階段三：Cloudflare 設定與驗證
@@ -479,9 +530,75 @@ ls config/
 # 每個客戶端都應該有最近的握手時間
 ```
 
-## 🔧 階段十：故障測試與排除
+## 🤖 階段十：GitHub Actions 自動部署測試
 
-### 10.1 模擬常見問題
+### 10.1 設定 GitHub Actions
+
+```bash
+# 1. 推送專案到 GitHub（如果尚未完成）
+git remote add origin https://github.com/yourusername/QWV-QuickWireguardVpn.git
+git push -u origin main
+
+# 2. 在 GitHub 中設定 Secrets
+# 前往：Settings → Secrets and variables → Actions
+# 添加必要的 Secrets：VPN_HOST, VPN_USER, VPN_SSH_KEY 等
+```
+
+### 10.2 測試自動部署工作流程
+
+```bash
+# 1. 本地測試驗證腳本
+./scripts/validate.sh
+# 確保本地驗證通過
+
+# 2. 提交小變更觸發部署
+echo "# 測試部署 $(date)" >> README.md
+git add README.md
+git commit -m "test: 觸發 GitHub Actions 部署測試"
+git push origin main
+
+# 3. 監控 GitHub Actions 執行狀態
+# 前往 GitHub → Actions 頁籤查看執行結果
+```
+
+### 10.3 驗證自動部署結果
+
+```bash
+# 在伺服器上檢查部署結果
+./scripts/manage.sh status
+# 預期輸出：服務應該正常運行
+
+# 檢查最新的提交是否已部署
+git log --oneline -5
+# 應該顯示最新的提交
+
+# 檢查服務更新時間
+docker ps --format "table {{.Names}}\t{{.Status}}"
+# 檢查容器的啟動時間
+```
+
+### 10.4 GitHub Actions 故障排除
+
+```bash
+# 如果 GitHub Actions 失敗，檢查常見問題：
+
+# 1. SSH 連線問題
+ssh -i ~/.ssh/your_key user@host  # 測試本地連線
+
+# 2. 權限問題
+ls -la ~/.ssh/  # 檢查金鑰權限
+groups $USER | grep docker  # 檢查 Docker 群組
+
+# 3. 環境變數問題
+cat .env  # 檢查環境變數設定
+
+# 4. 服務狀態問題
+./scripts/manage.sh check  # 檢查系統狀態
+```
+
+## 🔧 階段十一：故障測試與排除
+
+### 11.1 模擬常見問題
 
 #### 測試防火牆阻擋
 
@@ -506,7 +623,7 @@ sudo ufw enable
 # 測試是否只能 ping IP 但無法解析域名
 ```
 
-### 10.2 日誌分析測試
+### 11.2 日誌分析測試
 
 ```bash
 # 查看錯誤日誌
@@ -519,9 +636,9 @@ docker logs cloudflare-ddns | tail -20
 docker stats --no-stream
 ```
 
-## 🧪 階段十一：效能與壓力測試
+## 🧪 階段十二：效能與壓力測試
 
-### 11.1 速度測試
+### 12.1 速度測試
 
 ```bash
 # 在客戶端執行速度測試
@@ -537,7 +654,7 @@ speedtest-cli
 # 計算速度損失百分比
 ```
 
-### 11.2 延遲測試
+### 12.2 延遲測試
 
 ```bash
 # 測試到不同地區的延遲
@@ -548,7 +665,7 @@ ping -c 10 208.67.222.222   # OpenDNS
 # 記錄 VPN 連接前後的延遲變化
 ```
 
-### 11.3 長時間穩定性測試
+### 12.3 長時間穩定性測試
 
 ```bash
 # 啟動長時間 ping 測試
@@ -570,6 +687,15 @@ grep "Destination Host Unreachable" ping_test.log
 - [ ] 伺服器規格：`_________________`
 - [ ] 網路環境：`[ ] 無 CGNAT` `[ ] 有 CGNAT`
 - [ ] 測試時間：`_________________`
+- [ ] Docker 版本：`_________________`
+- [ ] Docker Compose 版本：`_________________`
+
+### 專案驗證結果
+- [ ] 專案完整驗證：`[ ] 通過` `[ ] 失敗` 錯誤：`_________`
+- [ ] 檔案結構檢查：`[ ] 通過` `[ ] 失敗` 錯誤：`_________`
+- [ ] Docker Compose 語法：`[ ] 通過` `[ ] 失敗` 錯誤：`_________`
+- [ ] 腳本語法檢查：`[ ] 通過` `[ ] 失敗` 錯誤：`_________`
+- [ ] 安全性檢查：`[ ] 通過` `[ ] 失敗` 錯誤：`_________`
 
 ### 功能測試結果
 - [ ] 環境設定：`[ ] 通過` `[ ] 失敗` 錯誤：`_________`
@@ -579,6 +705,12 @@ grep "Destination Host Unreachable" ping_test.log
 - [ ] 流量路由：`[ ] 通過` `[ ] 失敗` 錯誤：`_________`
 - [ ] DNS 解析：`[ ] 通過` `[ ] 失敗` 錯誤：`_________`
 
+### GitHub Actions 測試
+- [ ] 工作流程觸發：`[ ] 通過` `[ ] 失敗` 錯誤：`_________`
+- [ ] SSH 連線測試：`[ ] 通過` `[ ] 失敗` 錯誤：`_________`
+- [ ] 自動部署：`[ ] 通過` `[ ] 失敗` 錯誤：`_________`
+- [ ] 服務健康檢查：`[ ] 通過` `[ ] 失敗` 錯誤：`_________`
+
 ### 效能測試結果
 - 不使用 VPN 速度：`下載 _____ Mbps，上傳 _____ Mbps`
 - 使用 VPN 速度：`下載 _____ Mbps，上傳 _____ Mbps`
@@ -586,42 +718,74 @@ grep "Destination Host Unreachable" ping_test.log
 - 速度損失：`_____ %`
 
 ### 管理功能測試
+- [ ] 驗證功能（validate）：`[ ] 通過` `[ ] 失敗`
+- [ ] 系統檢查（check）：`[ ] 通過` `[ ] 失敗`
 - [ ] 備份功能：`[ ] 通過` `[ ] 失敗`
 - [ ] 重啟功能：`[ ] 通過` `[ ] 失敗`
 - [ ] 新增客戶端：`[ ] 通過` `[ ] 失敗`
 - [ ] 日誌查看：`[ ] 通過` `[ ] 失敗`
+- [ ] 同儕檢視（peers）：`[ ] 通過` `[ ] 失敗`
 
 ## 🚨 常見測試問題與解決方案
 
-### 問題 1：Docker 權限問題
+### 問題 1：專案驗證失敗
+```bash
+# 症狀：./scripts/validate.sh 回報錯誤
+# 解決步驟：
+./scripts/validate.sh  # 查看詳細錯誤
+# 常見問題：
+# - 缺少 .env 檔案：cp env.example .env
+# - 權限問題：chmod +x scripts/*.sh
+# - shellcheck 未安裝：sudo apt install shellcheck
+```
+
+### 問題 2：Docker 權限問題
 ```bash
 # 症狀：Got permission denied while trying to connect to the Docker daemon
 # 解決：
 sudo usermod -aG docker $USER
 # 然後登出重新登入
+# 使用系統檢查確認：
+./scripts/manage.sh check
 ```
 
-### 問題 2：無法建立握手
+### 問題 3：無法建立握手
 ```bash
-# 檢查防火牆
+# 使用系統檢查診斷問題
+./scripts/manage.sh check
+# 檢查防火牆狀態
 sudo ufw status
-# 檢查連接埠轉送
+# 檢查連接埠轉送設定
 # 檢查 CGNAT 狀態
 ```
 
-### 問題 3：DNS 無法解析
+### 問題 4：DNS 無法解析
 ```bash
 # 檢查客戶端 DNS 設定
 # 測試直接 IP 連接
 ping 8.8.8.8
+# 使用驗證腳本檢查組態
+./scripts/validate.sh
 ```
 
-### 問題 4：DDNS 更新失敗
+### 問題 5：DDNS 更新失敗
 ```bash
-# 檢查 API 權杖
+# 檢查 API 權杖有效性
 curl -X GET "https://api.cloudflare.com/client/v4/user/tokens/verify" \
      -H "Authorization: Bearer YOUR_TOKEN"
+# 檢查環境變數設定
+./scripts/validate.sh
 # 檢查網路連接
+```
+
+### 問題 6：GitHub Actions 部署失敗
+```bash
+# 檢查 SSH 連線
+ssh -T git@github.com
+# 檢查 Secrets 設定
+# 在 GitHub Actions 頁面檢查錯誤日誌
+# 本地測試部署腳本：
+./scripts/validate.sh
 ```
 
 ## ✅ 測試完成檢查
