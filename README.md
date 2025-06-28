@@ -15,9 +15,11 @@ QWV is a complete enterprise-grade WireGuard VPN solution that adopts modern Dev
 - **🐳 Containerized Deployment**: Docker-based environment isolation, dependency management, and one-click deployment
 - **🌐 Dynamic DNS**: Integrated Cloudflare DDNS automatically handles dynamic IPs, supports home network environments
 - **⚙️ Infrastructure as Code**: Fully manage infrastructure through version control, enabling traceable and repeatable deployments
-- **🔄 GitOps Workflow**: GitHub Actions enables push-to-deploy automation workflow
+- **🔄 GitOps Workflow**: GitHub Actions enables push-to-deploy automation workflow with intelligent mode detection
 - **🛠️ Automated Management**: Built-in comprehensive management scripts to simplify daily operations
 - **📊 CGNAT Support**: Provides alternative solutions for CGNAT environments
+- **🌍 Multi-Environment Support**: Supports both single-environment (legacy) and multi-environment (enterprise) deployments
+- **🔄 Backward Compatible**: Seamless upgrade path for existing users without configuration changes
 
 ## 🏗️ Project Architecture
 
@@ -48,6 +50,22 @@ Internet → Router → Server → Docker → [WireGuard + DDNS]
 ```
 
 ## 🚀 Quick Start
+
+### 🌍 Multi-Environment Architecture
+
+QWV now supports professional multi-environment deployment across regions:
+
+| Environment | Region | Best For | Example Domain |
+|-------------|--------|----------|----------------|
+| 🌏 **Asia** | Asia-Pacific | Users in Asia, Australia | `vpn-asia.917420.xyz` |
+| 🇺🇸 **US** | Americas | Users in North/South America | `vpn-us.917420.xyz` |
+| 🇪🇺 **EU** | Europe | Users in Europe, Africa | `vpn-eu.917420.xyz` |
+
+**Deployment Options:**
+- **Single Environment** (Recommended for beginners): Choose one region
+- **Multi-Environment** (Advanced): Deploy to multiple regions for global coverage
+
+> 📖 **For multi-environment setup**, see: **[Multi-Environment Deployment Guide](MULTI-ENVIRONMENT.md)**
 
 ### ⚠️ Important: CGNAT Detection
 
@@ -557,18 +575,127 @@ ssh -i ~/.ssh/github_actions_key user@host "docker ps"
 
 ## 🤖 GitHub Actions Automated Deployment
 
-### GitHub Secrets Configuration
+### GitHub Configuration
 
-To enable automated deployment, configure the following secrets in your GitHub repository:
+QWV uses both **Variables** (public) and **Secrets** (encrypted) for configuration. The system automatically detects your deployment mode based on configured Variables.
+
+#### 🔧 Single Environment Setup (Legacy Compatible)
 
 **Navigate to**: Settings → Secrets and variables → Actions
 
+**Variables Tab (Public Configuration):**
+| Variable Name | Description | Example Value | Required |
+|---------------|-------------|---------------|----------|
+| `VPN_DOMAIN` | Complete VPN domain | `vpn.917420.xyz` | ✅ Required |
+
+**Secrets Tab (Sensitive Information):**
 | Secret Name | Description | Example Value | Required |
 |-------------|-------------|---------------|----------|
-| `VPN_HOST` | VPN server IP address or domain | `203.0.113.1` or `vpn.yourdomain.com` | ✅ Required |
+| `VPN_HOST` | VPN server IP address | `203.0.113.1` | ✅ Required |
 | `VPN_USER` | Login username for server | `ubuntu` or `user` | ✅ Required |
-| `VPN_SSH_KEY` | SSH private key content (complete private key file) | `-----BEGIN OPENSSH PRIVATE KEY-----\n...` | ✅ Required |
+| `VPN_SSH_KEY` | SSH private key content (complete file) | `-----BEGIN OPENSSH PRIVATE KEY-----\n...` | ✅ Required |
 | `VPN_PORT` | SSH port (if not default 22) | `2222` or `22` | ⚪ Optional |
+| `VPN_DEPLOY_PATH` | Deployment path on server | `/home/ubuntu/QWV` | ⚪ Optional |
+| `CF_API_TOKEN` | Cloudflare API token | `cf_token_here...` | ✅ Required |
+
+**Legacy Fallback (Deprecated):**
+For existing users, the old `CF_ZONE` and `CF_SUBDOMAIN` secrets are still supported but will be migrated to the new `VPN_DOMAIN` variable format.
+
+**Configuration Example (Your Setup):**
+```
+Variables:
+  VPN_DOMAIN = "vpn.917420.xyz"
+
+Secrets:
+  VPN_HOST = "YOUR_GCP_EXTERNAL_IP"
+  VPN_USER = "ubuntu" 
+  VPN_SSH_KEY = "-----BEGIN OPENSSH PRIVATE KEY-----..."
+  CF_API_TOKEN = "YOUR_CLOUDFLARE_TOKEN"
+```
+
+#### 🌍 Multi-Environment Setup (DNS-Based Service Routing)
+
+**The system automatically switches to multi-environment mode when any multi-environment Variables are detected.**
+
+**Variables Tab (DNS Service Discovery):**
+| Variable Name | Description | Example Value | Purpose |
+|---------------|-------------|---------------|---------|
+| `VPN_DOMAIN_ASIA` | Asia VPN service domain | `vpn-asia.917420.xyz` | 🌏 Asia routing |
+| `VPN_DOMAIN_US` | US VPN service domain | `vpn-us.917420.xyz` | 🇺🇸 US routing |
+| `VPN_DOMAIN_EU` | EU VPN service domain | `vpn-eu.917420.xyz` | 🇪🇺 EU routing |
+
+**Secrets Tab (Per-Environment Sensitive Data):**
+
+**Asia Environment:**
+- `VPN_HOST_ASIA`, `VPN_USER_ASIA`, `VPN_SSH_KEY_ASIA`, `VPN_PORT_ASIA`, `VPN_DEPLOY_PATH_ASIA`
+- `CF_API_TOKEN_ASIA`
+
+**US Environment:**
+- `VPN_HOST_US`, `VPN_USER_US`, `VPN_SSH_KEY_US`, `VPN_PORT_US`, `VPN_DEPLOY_PATH_US`  
+- `CF_API_TOKEN_US`
+
+**EU Environment:**
+- `VPN_HOST_EU`, `VPN_USER_EU`, `VPN_SSH_KEY_EU`, `VPN_PORT_EU`, `VPN_DEPLOY_PATH_EU`
+- `CF_API_TOKEN_EU`
+
+**Multi-Environment Configuration Example:**
+```
+Variables:
+  VPN_DOMAIN_ASIA = "vpn-asia.917420.xyz"
+  VPN_DOMAIN_US = "vpn-us.917420.xyz"  
+  VPN_DOMAIN_EU = "vpn-eu.917420.xyz"
+
+Secrets:
+  # Asia Environment
+  VPN_HOST_ASIA = "ASIA_GCP_IP"
+  VPN_USER_ASIA = "ubuntu"
+  VPN_SSH_KEY_ASIA = "-----BEGIN OPENSSH PRIVATE KEY-----..."
+  CF_API_TOKEN_ASIA = "ASIA_CLOUDFLARE_TOKEN"
+  
+  # US Environment  
+  VPN_HOST_US = "US_GCP_IP"
+  VPN_USER_US = "ubuntu"
+  VPN_SSH_KEY_US = "-----BEGIN OPENSSH PRIVATE KEY-----..."
+  CF_API_TOKEN_US = "US_CLOUDFLARE_TOKEN"
+  
+  # EU Environment
+  VPN_HOST_EU = "EU_GCP_IP"
+  VPN_USER_EU = "ubuntu"
+  VPN_SSH_KEY_EU = "-----BEGIN OPENSSH PRIVATE KEY-----..."
+  CF_API_TOKEN_EU = "EU_CLOUDFLARE_TOKEN"
+```
+
+#### 🌐 DNS-Based Service Routing Architecture
+
+This multi-environment setup implements **DNS-based service routing**:
+
+```
+Client Request Flow:
+├── vpn-asia.917420.xyz  → 🌏 Asia VPN Server (Optimal for APAC users)
+├── vpn-us.917420.xyz    → 🇺🇸 US VPN Server (Optimal for Americas users)  
+└── vpn-eu.917420.xyz    → 🇪🇺 EU VPN Server (Optimal for EMEA users)
+```
+
+**Benefits:**
+- 🚀 **Geographic Optimization**: Users connect to nearest server for better performance
+- 🛡️ **High Availability**: If one region fails, others remain operational
+- 📈 **Load Distribution**: Traffic distributed across multiple servers
+- 🔧 **Easy Management**: Single GitHub Actions manages all environments
+
+#### 🎛️ Deployment Control Options
+
+When using GitHub Actions UI (`Actions` → `Run workflow`):
+
+| Option | Description | Use Case |
+|--------|-------------|----------|
+| `auto` | Auto-detect mode and deploy accordingly | Default behavior |
+| `single` | Force single-environment mode | Force legacy mode even with multi-env secrets |
+| `asia` | Deploy only to Asia environment | Target specific region |
+| `us` | Deploy only to US environment | Target specific region |
+| `eu` | Deploy only to EU environment | Target specific region |
+| `all` | Deploy to all multi-environments | Deploy to all regions at once |
+
+> 📖 **Complete multi-environment guide**: [MULTI-ENVIRONMENT.md](MULTI-ENVIRONMENT.md)
 
 ### SSH Key Preparation Steps
 
@@ -605,14 +732,30 @@ The GitHub Actions workflow automatically:
 
 #### Trigger Deployment
 
+**Automatic Deployment:**
 ```bash
-# Push changes to trigger deployment
+# Push changes to trigger automatic deployment
 git add .
 git commit -m "feat: Update VPN configuration"
 git push origin main
 
-# Check deployment status
-# Go to GitHub → Actions tab to view execution results
+# System auto-detects deployment mode and deploys accordingly
+# Check deployment status: GitHub → Actions tab
+```
+
+**Manual Deployment Control:**
+```bash
+# For selective deployment control:
+# 1. Go to GitHub → Actions → "Multi-Environment QWV VPN Deployment"
+# 2. Click "Run workflow"
+# 3. Select deployment option:
+#    - auto: Auto-detect and deploy (default)
+#    - single: Force single-environment deployment
+#    - asia/us/eu: Deploy to specific region only
+#    - all: Deploy to all multi-environments
+
+# Example: Deploy only to Asia environment
+# Select "asia" from dropdown and click "Run workflow"
 ```
 
 ## 📚 Advanced Topics and Best Practices

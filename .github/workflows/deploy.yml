@@ -1,180 +1,443 @@
-name: 🚀 自動部署 QWV VPN
+name: 🚀 Multi-Environment QWV VPN Deployment
 
 on:
   push:
     branches: [ main, master ]
   pull_request:
     branches: [ main, master ]
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Deploy to specific environment'
+        required: false
+        default: 'auto'
+        type: choice
+        options:
+        - auto
+        - single
+        - asia
+        - us
+        - eu
+        - all
 
 jobs:
-  deploy:
-    name: 部署到伺服器
+  # Detect deployment mode (single vs multi-environment)
+  detect-mode:
+    name: Detect Deployment Mode
     runs-on: ubuntu-latest
-    
-    # 只在推送到 main 分支時執行部署（不在 PR 時部署）
-    if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')
+    outputs:
+      mode: ${{ steps.detect.outputs.mode }}
+      environments: ${{ steps.detect.outputs.environments }}
     
     steps:
-    - name: 📥 檢出程式碼
+    - name: 🔍 Detect Deployment Configuration
+      id: detect
+      run: |
+        # Use GitHub Variables to detect multi-environment setup
+        # Variables are safe to check and publicly visible
+        if [ -n "${{ vars.VPN_DOMAIN_ASIA }}" ] || [ -n "${{ vars.VPN_DOMAIN_US }}" ] || [ -n "${{ vars.VPN_DOMAIN_EU }}" ]; then
+          echo "Multi-environment configuration detected via Variables"
+          MODE="multi"
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            case "${{ github.event.inputs.environment }}" in
+              "single")
+                MODE="single"
+                ENVIRONMENTS="[\"single\"]"
+                echo "Force single-environment mode requested"
+                ;;
+              "asia")
+                ENVIRONMENTS="[\"asia\"]"
+                echo "Deploy to Asia environment only"
+                ;;
+              "us")
+                ENVIRONMENTS="[\"us\"]"
+                echo "Deploy to US environment only"
+                ;;
+              "eu")
+                ENVIRONMENTS="[\"eu\"]"
+                echo "Deploy to EU environment only"
+                ;;
+              "all")
+                ENVIRONMENTS="[\"asia\", \"us\", \"eu\"]"
+                echo "Deploy to all multi-environments"
+                ;;
+              "auto"|*)
+                ENVIRONMENTS="[\"asia\", \"us\", \"eu\"]"
+                echo "Auto-deploy to all available environments"
+                ;;
+            esac
+          else
+            ENVIRONMENTS="[\"asia\", \"us\", \"eu\"]"
+            echo "Auto-triggered: deploying to all multi-environments"
+          fi
+        elif [ -n "${{ vars.VPN_DOMAIN }}" ]; then
+          echo "Single-environment configuration detected"
+          MODE="single"
+          ENVIRONMENTS="[\"single\"]"
+        else
+          # Fallback to legacy detection
+          echo "Using legacy mode detection"
+          MODE="single"
+          ENVIRONMENTS="[\"single\"]"
+        fi
+        
+        echo "mode=$MODE" >> $GITHUB_OUTPUT
+        echo "environments=$ENVIRONMENTS" >> $GITHUB_OUTPUT
+        echo "✅ Deployment mode: $MODE"
+        echo "🎯 Target environments: $ENVIRONMENTS"
+
+  deploy:
+    name: Deploy to ${{ matrix.environment }}
+    runs-on: ubuntu-latest
+    needs: detect-mode
+    
+    # Deploy on push to main branch (not on PR) or manual workflow dispatch
+    if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master') || github.event_name == 'workflow_dispatch'
+    
+    strategy:
+      matrix:
+        environment: ${{ fromJSON(needs.detect-mode.outputs.environments) }}
+      fail-fast: false  # Continue deploying to other environments even if one fails
+    
+    environment: ${{ matrix.environment != 'single' && matrix.environment || 'production' }}
+    
+    steps:
+    - name: 📥 Checkout Code
       uses: actions/checkout@v4
       
-    - name: 🔧 設定 SSH
+    - name: 🔧 Set Environment Variables
+      run: |
+        if [ "${{ matrix.environment }}" = "single" ]; then
+          echo "ENV_REGION=Single Environment" >> $GITHUB_ENV
+          echo "ENV_EMOJI=🔧" >> $GITHUB_ENV
+          echo "ENV_TIMEZONE=UTC" >> $GITHUB_ENV
+        else
+          case "${{ matrix.environment }}" in
+            "asia")
+              echo "ENV_REGION=Asia" >> $GITHUB_ENV
+              echo "ENV_EMOJI=🌏" >> $GITHUB_ENV
+              echo "ENV_TIMEZONE=Asia/Taipei" >> $GITHUB_ENV
+              ;;
+            "us")
+              echo "ENV_REGION=United States" >> $GITHUB_ENV
+              echo "ENV_EMOJI=🇺🇸" >> $GITHUB_ENV
+              echo "ENV_TIMEZONE=America/New_York" >> $GITHUB_ENV
+              ;;
+            "eu")
+              echo "ENV_REGION=Europe" >> $GITHUB_ENV
+              echo "ENV_EMOJI=🇪🇺" >> $GITHUB_ENV
+              echo "ENV_TIMEZONE=Europe/London" >> $GITHUB_ENV
+              ;;
+          esac
+        fi
+        
+    - name: 🔧 Setup SSH
       run: |
         mkdir -p ~/.ssh
-        echo "${{ secrets.VPN_SSH_KEY }}" > ~/.ssh/id_rsa
+        
+        # Get environment-specific SSH key
+        if [ "${{ matrix.environment }}" = "single" ]; then
+          # Legacy single-environment mode
+          echo "${{ secrets.VPN_SSH_KEY }}" > ~/.ssh/id_rsa
+          VPN_HOST="${{ secrets.VPN_HOST }}"
+          VPN_USER="${{ secrets.VPN_USER }}"
+          VPN_PORT="${{ secrets.VPN_PORT }}"
+        else
+          # Multi-environment mode
+          case "${{ matrix.environment }}" in
+            "asia")
+              echo "${{ secrets.VPN_SSH_KEY_ASIA }}" > ~/.ssh/id_rsa
+              VPN_HOST="${{ secrets.VPN_HOST_ASIA }}"
+              VPN_USER="${{ secrets.VPN_USER_ASIA }}"
+              VPN_PORT="${{ secrets.VPN_PORT_ASIA }}"
+              ;;
+            "us")
+              echo "${{ secrets.VPN_SSH_KEY_US }}" > ~/.ssh/id_rsa
+              VPN_HOST="${{ secrets.VPN_HOST_US }}"
+              VPN_USER="${{ secrets.VPN_USER_US }}"
+              VPN_PORT="${{ secrets.VPN_PORT_US }}"
+              ;;
+            "eu")
+              echo "${{ secrets.VPN_SSH_KEY_EU }}" > ~/.ssh/id_rsa
+              VPN_HOST="${{ secrets.VPN_HOST_EU }}"
+              VPN_USER="${{ secrets.VPN_USER_EU }}"
+              VPN_PORT="${{ secrets.VPN_PORT_EU }}"
+              ;;
+          esac
+        fi
+        
         chmod 600 ~/.ssh/id_rsa
-        # 設定 SSH 配置，避免主機金鑰檢查
+        
+        # Save environment variables for later steps
+        echo "VPN_HOST=$VPN_HOST" >> $GITHUB_ENV
+        echo "VPN_USER=$VPN_USER" >> $GITHUB_ENV
+        echo "VPN_PORT=${VPN_PORT:-22}" >> $GITHUB_ENV
+        
+        # SSH configuration to avoid host key checking
         cat >> ~/.ssh/config << EOF
-        Host ${{ secrets.VPN_HOST }}
+        Host $VPN_HOST
             StrictHostKeyChecking no
             UserKnownHostsFile /dev/null
             LogLevel ERROR
         EOF
-        # 如果需要自訂連接埠，從 secrets 讀取
-        VPN_PORT="${{ secrets.VPN_PORT }}"
+        
+        # Add host key
         if [ -n "$VPN_PORT" ] && [ "$VPN_PORT" != "22" ]; then
-          ssh-keyscan -p $VPN_PORT -H ${{ secrets.VPN_HOST }} >> ~/.ssh/known_hosts 2>/dev/null || true
+          ssh-keyscan -p $VPN_PORT -H $VPN_HOST >> ~/.ssh/known_hosts 2>/dev/null || true
         else
-          ssh-keyscan -H ${{ secrets.VPN_HOST }} >> ~/.ssh/known_hosts 2>/dev/null || true
+          ssh-keyscan -H $VPN_HOST >> ~/.ssh/known_hosts 2>/dev/null || true
         fi
         
-    - name: 🔍 驗證連線
+    - name: 🔍 Verify Connection
       run: |
-        # 支援自訂 SSH 連接埠
-        VPN_PORT="${{ secrets.VPN_PORT }}"
         SSH_OPTIONS="-o ConnectTimeout=10 -o StrictHostKeyChecking=no"
-        if [ -n "$VPN_PORT" ] && [ "$VPN_PORT" != "22" ]; then
+        if [ "$VPN_PORT" != "22" ]; then
           SSH_OPTIONS="$SSH_OPTIONS -p $VPN_PORT"
         fi
-        ssh $SSH_OPTIONS ${{ secrets.VPN_USER }}@${{ secrets.VPN_HOST }} "echo '✅ SSH 連線成功'"
         
-    - name: 📋 檢查伺服器狀態
+        echo "${{ env.ENV_EMOJI }} Connecting to ${{ env.ENV_REGION }} server..."
+        ssh $SSH_OPTIONS $VPN_USER@$VPN_HOST "echo '✅ SSH connection to ${{ env.ENV_REGION }} successful'"
+        
+    - name: 📋 Check Server Status
       run: |
-        VPN_PORT="${{ secrets.VPN_PORT }}"
         SSH_OPTIONS="-o ConnectTimeout=10 -o StrictHostKeyChecking=no"
-        if [ -n "$VPN_PORT" ] && [ "$VPN_PORT" != "22" ]; then
+        if [ "$VPN_PORT" != "22" ]; then
           SSH_OPTIONS="$SSH_OPTIONS -p $VPN_PORT"
         fi
-        ssh $SSH_OPTIONS ${{ secrets.VPN_USER }}@${{ secrets.VPN_HOST }} "
-          echo '🔍 檢查 Docker 狀態:'
+        
+        ssh $SSH_OPTIONS $VPN_USER@$VPN_HOST "
+          echo '${{ env.ENV_EMOJI }} Checking ${{ env.ENV_REGION }} server status:'
+          echo '🔍 Docker version:'
           docker --version
-          echo '📊 檢查目前運行的容器:'
+          echo '📊 Running containers:'
           docker ps || true
-          echo '💽 檢查磁碟空間:'
+          echo '💽 Disk space:'
           df -h / || true
-          echo '💾 檢查記憶體使用:'
+          echo '💾 Memory usage:'
           free -h || true
+          echo '📡 Network info:'
+          curl -s https://ipinfo.io/ip || true
         "
         
-    - name: 🔄 部署到伺服器
+    - name: 🔄 Deploy to Server
       run: |
-        VPN_PORT="${{ secrets.VPN_PORT }}"
         SSH_OPTIONS="-o ConnectTimeout=10 -o StrictHostKeyChecking=no"
-        if [ -n "$VPN_PORT" ] && [ "$VPN_PORT" != "22" ]; then
+        if [ "$VPN_PORT" != "22" ]; then
           SSH_OPTIONS="$SSH_OPTIONS -p $VPN_PORT"
         fi
-        ssh $SSH_OPTIONS ${{ secrets.VPN_USER }}@${{ secrets.VPN_HOST }} "
-          set -e  # 發生錯誤立即退出
+        
+        # Get environment-specific domain configuration from Variables
+        if [ "${{ matrix.environment }}" = "single" ]; then
+          # Legacy single-environment mode
+          VPN_DOMAIN="${{ vars.VPN_DOMAIN }}"
+          if [ -z "$VPN_DOMAIN" ]; then
+            # Fallback to legacy secrets format
+            CF_ZONE="${{ secrets.CF_ZONE }}"
+            CF_SUBDOMAIN="${{ secrets.CF_SUBDOMAIN }}"
+            VPN_DOMAIN="$CF_SUBDOMAIN.$CF_ZONE"
+          fi
+          CF_API_TOKEN="${{ secrets.CF_API_TOKEN }}"
+          DEPLOY_PATH="${{ secrets.VPN_DEPLOY_PATH }}"
+        else
+          # Multi-environment mode using Variables
+          case "${{ matrix.environment }}" in
+            "asia")
+              VPN_DOMAIN="${{ vars.VPN_DOMAIN_ASIA }}"
+              CF_API_TOKEN="${{ secrets.CF_API_TOKEN_ASIA }}"
+              DEPLOY_PATH="${{ secrets.VPN_DEPLOY_PATH_ASIA }}"
+              ;;
+            "us")
+              VPN_DOMAIN="${{ vars.VPN_DOMAIN_US }}"
+              CF_API_TOKEN="${{ secrets.CF_API_TOKEN_US }}"
+              DEPLOY_PATH="${{ secrets.VPN_DEPLOY_PATH_US }}"
+              ;;
+            "eu")
+              VPN_DOMAIN="${{ vars.VPN_DOMAIN_EU }}"
+              CF_API_TOKEN="${{ secrets.CF_API_TOKEN_EU }}"
+              DEPLOY_PATH="${{ secrets.VPN_DEPLOY_PATH_EU }}"
+              ;;
+          esac
+        fi
+        
+        # Parse domain into zone and subdomain
+        if [[ "$VPN_DOMAIN" == *.* ]]; then
+          CF_SUBDOMAIN="${VPN_DOMAIN%%.*}"
+          CF_ZONE="${VPN_DOMAIN#*.}"
+        else
+          echo "❌ Invalid domain format: $VPN_DOMAIN"
+          exit 1
+        fi
+        
+        echo "🌐 Deploying VPN domain: $VPN_DOMAIN"
+        echo "📡 Zone: $CF_ZONE, Subdomain: $CF_SUBDOMAIN"
+        
+        ssh $SSH_OPTIONS $VPN_USER@$VPN_HOST "
+          set -e  # Exit immediately on error
           
-          echo '📂 切換到部署目錄...'
-          cd ${{ secrets.VPN_DEPLOY_PATH }}
+          echo '${{ env.ENV_EMOJI }} Deploying to ${{ env.ENV_REGION }} server...'
+          echo '📂 Switching to deployment directory...'
+          cd \${DEPLOY_PATH:-~/QWV}
           
-          echo '📥 拉取最新程式碼...'
-          git fetch origin || { echo '❌ Git fetch 失敗'; exit 1; }
-          git reset --hard origin/main || { echo '❌ Git reset 失敗'; exit 1; }
+          echo '📥 Pulling latest code...'
+          git fetch origin || { echo '❌ Git fetch failed'; exit 1; }
+          git reset --hard origin/main || { echo '❌ Git reset failed'; exit 1; }
           
-          echo '🛑 停止現有服務...'
-          ./scripts/manage.sh stop || echo '⚠️ 停止服務時出現警告（可能服務未運行）'
+          echo '🛑 Stopping existing services...'
+          ./scripts/manage.sh stop || echo '⚠️ Warning during service stop (service may not be running)'
           
-          echo '📦 拉取最新映像檔...'
-          docker compose pull || { echo '❌ Docker compose pull 失敗'; exit 1; }
+          echo '📦 Pulling latest images...'
+          docker compose pull || { echo '❌ Docker compose pull failed'; exit 1; }
           
-          echo '🔧 設定環境變數...'
+          echo '🔧 Setting up environment variables...'
           cat > .env << 'EOF'
-        CF_API_TOKEN=${{ secrets.CF_API_TOKEN }}
-        CF_ZONE=${{ secrets.CF_ZONE }}
-        CF_SUBDOMAIN=${{ secrets.CF_SUBDOMAIN }}
+        CF_API_TOKEN=$CF_API_TOKEN
+        CF_ZONE=$CF_ZONE
+        CF_SUBDOMAIN=$CF_SUBDOMAIN
         EOF
           
-          echo '✅ 環境變數設定完成'
+          echo '✅ Environment variables configured for ${{ matrix.environment }}'
+          echo '🌐 VPN Domain: $VPN_DOMAIN'
           
-          echo '🚀 啟動服務...'
-          ./scripts/manage.sh start || { echo '❌ 啟動服務失敗'; exit 1; }
+          echo '🚀 Starting services...'
+          ./scripts/manage.sh start || { echo '❌ Failed to start services'; exit 1; }
           
-          echo '⏳ 等待服務完全啟動...'
+          echo '⏳ Waiting for services to fully start...'
           sleep 15
           
-          echo '📊 檢查服務狀態:'
-          ./scripts/manage.sh status || { echo '❌ 無法取得服務狀態'; exit 1; }
+          echo '📊 Checking service status:'
+          ./scripts/manage.sh status || { echo '❌ Cannot get service status'; exit 1; }
           
-          echo '🔍 檢查 WireGuard 狀態:'
-          ./scripts/manage.sh peers || echo '⚠️ 暫無客戶端連接'
+          echo '🔍 Checking WireGuard status:'
+          ./scripts/manage.sh peers || echo '⚠️ No clients connected yet'
+          
+          echo '${{ env.ENV_EMOJI }} Deployment to ${{ env.ENV_REGION }} completed successfully!'
         "
         
-    - name: 🧹 清理映像檔
+    - name: 🧹 Cleanup Images
       run: |
-        VPN_PORT="${{ secrets.VPN_PORT }}"
         SSH_OPTIONS="-o ConnectTimeout=10 -o StrictHostKeyChecking=no"
-        if [ -n "$VPN_PORT" ] && [ "$VPN_PORT" != "22" ]; then
+        if [ "$VPN_PORT" != "22" ]; then
           SSH_OPTIONS="$SSH_OPTIONS -p $VPN_PORT"
         fi
-        ssh $SSH_OPTIONS ${{ secrets.VPN_USER }}@${{ secrets.VPN_HOST }} "
-          echo '🧹 清理未使用的 Docker 映像檔...'
-          docker image prune -f || echo '⚠️ 映像檔清理時出現警告'
+        
+        ssh $SSH_OPTIONS $VPN_USER@$VPN_HOST "
+          echo '🧹 Cleaning up unused Docker images...'
+          docker image prune -f || echo '⚠️ Warning during image cleanup'
           
-          echo '🗑️ 清理未使用的容器...'
-          docker container prune -f || echo '⚠️ 容器清理時出現警告'
+          echo '🗑️ Cleaning up unused containers...'
+          docker container prune -f || echo '⚠️ Warning during container cleanup'
           
-          echo '💾 檢查清理後的磁碟空間:'
+          echo '💾 Disk space after cleanup:'
           df -h / || true
         "
         
-    - name: ✅ 部署成功通知
+    - name: ✅ Deployment Success Notification
       run: |
-        echo "🎉 VPN 服務已成功部署到伺服器！"
-        echo "📍 伺服器: ${{ secrets.VPN_HOST }}"
-        echo "🌐 VPN 域名: ${{ secrets.CF_SUBDOMAIN }}.${{ secrets.CF_ZONE }}"
-        echo "🔌 VPN 連接埠: 51820"
-        echo "⏰ 部署時間: $(date)"
-        echo ""
-        echo "🔗 下一步: 登入伺服器執行以下指令來獲取客戶端設定："
-        echo "   ./scripts/manage.sh qr <客戶端名稱>"
+        # Get domain configuration for notification
+        if [ "${{ matrix.environment }}" = "single" ]; then
+          VPN_DOMAIN="${{ vars.VPN_DOMAIN }}"
+          if [ -z "$VPN_DOMAIN" ]; then
+            CF_SUBDOMAIN="${{ secrets.CF_SUBDOMAIN }}"
+            CF_ZONE="${{ secrets.CF_ZONE }}"
+            VPN_DOMAIN="$CF_SUBDOMAIN.$CF_ZONE"
+          fi
+        else
+          case "${{ matrix.environment }}" in
+            "asia")
+              VPN_DOMAIN="${{ vars.VPN_DOMAIN_ASIA }}"
+              ;;
+            "us")
+              VPN_DOMAIN="${{ vars.VPN_DOMAIN_US }}"
+              ;;
+            "eu")
+              VPN_DOMAIN="${{ vars.VPN_DOMAIN_EU }}"
+              ;;
+          esac
+        fi
         
-    - name: 🚨 部署失敗回滾
+        echo "🎉 VPN service successfully deployed to ${{ env.ENV_REGION }}!"
+        echo "📍 Server: $VPN_HOST"
+        echo "🌐 VPN Domain: $VPN_DOMAIN"
+        echo "🔌 VPN Port: 51820"
+        echo "⏰ Deployment Time: $(date)"
+        echo ""
+        echo "🔗 Next step: Login to server and run the following command to get client configuration:"
+        echo "   ./scripts/manage.sh qr <client_name>"
+        
+    - name: 🚨 Deployment Failure Rollback
       if: failure()
       run: |
-        echo "❌ 部署失敗，嘗試回滾服務..."
-        VPN_PORT="${{ secrets.VPN_PORT }}"
+        echo "❌ Deployment to ${{ env.ENV_REGION }} failed, attempting rollback..."
         SSH_OPTIONS="-o ConnectTimeout=10 -o StrictHostKeyChecking=no"
-        if [ -n "$VPN_PORT" ] && [ "$VPN_PORT" != "22" ]; then
+        if [ "$VPN_PORT" != "22" ]; then
           SSH_OPTIONS="$SSH_OPTIONS -p $VPN_PORT"
         fi
-        ssh $SSH_OPTIONS ${{ secrets.VPN_USER }}@${{ secrets.VPN_HOST }} "
-          cd ${{ secrets.VPN_DEPLOY_PATH }}
-          echo '🔄 嘗試重新啟動服務...'
-          ./scripts/manage.sh restart || echo '❌ 無法重新啟動服務'
-          echo '📊 檢查服務狀態:'
-          ./scripts/manage.sh status || echo '❌ 服務異常'
-        " || echo "❌ 無法連接到伺服器進行回滾"
         
+        DEPLOY_PATH="${{ secrets.VPN_DEPLOY_PATH }}"
+        if [ "${{ matrix.environment }}" != "single" ]; then
+          case "${{ matrix.environment }}" in
+            "asia") DEPLOY_PATH="${{ secrets.VPN_DEPLOY_PATH_ASIA }}" ;;
+            "us") DEPLOY_PATH="${{ secrets.VPN_DEPLOY_PATH_US }}" ;;
+            "eu") DEPLOY_PATH="${{ secrets.VPN_DEPLOY_PATH_EU }}" ;;
+          esac
+        fi
+        
+        ssh $SSH_OPTIONS $VPN_USER@$VPN_HOST "
+          cd \${DEPLOY_PATH:-~/QWV}
+          echo '🔄 Attempting to restart services...'
+          ./scripts/manage.sh restart || echo '❌ Cannot restart services'
+          echo '📊 Checking service status:'
+          ./scripts/manage.sh status || echo '❌ Service abnormal'
+        " || echo "❌ Cannot connect to server for rollback"
+
   validate:
-    name: 驗證配置
+    name: Validate Configuration
     runs-on: ubuntu-latest
     
     steps:
-    - name: 📥 檢出程式碼
+    - name: 📥 Checkout Code
       uses: actions/checkout@v4
       
-    - name: 🔧 安裝驗證工具
+    - name: 🔧 Install Validation Tools
       run: |
-        # 安裝 shellcheck 用於腳本檢查
+        # Install shellcheck for script validation
         sudo apt-get update
         sudo apt-get install -y shellcheck
         
-    - name: 🔍 執行專案完整驗證
+    - name: 🔍 Execute Complete Project Validation
       run: |
-        # 給腳本執行權限
+        # Grant execute permissions to scripts
         chmod +x scripts/*.sh
         
-        # 執行完整專案驗證
-        ./scripts/validate.sh 
+        # Execute complete project validation
+        ./scripts/validate.sh
+
+  summary:
+    name: Deployment Summary
+    runs-on: ubuntu-latest
+    needs: [detect-mode, deploy, validate]
+    if: always()
+    
+    steps:
+    - name: 📊 Generate Deployment Summary
+      run: |
+        echo "# 🚀 QWV VPN Deployment Summary" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "**🔧 Deployment Mode:** ${{ needs.detect-mode.outputs.mode }}" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        
+        if [ "${{ needs.detect-mode.outputs.mode }}" = "multi" ]; then
+          echo "| Environment | Status | Region | Domain |" >> $GITHUB_STEP_SUMMARY
+          echo "|-------------|--------|--------|---------" >> $GITHUB_STEP_SUMMARY
+          echo "| 🌏 Asia | ${{ needs.deploy.result == 'success' && '✅ Success' || '❌ Failed' }} | Asia-Pacific | ${{ vars.VPN_DOMAIN_ASIA }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| 🇺🇸 US | ${{ needs.deploy.result == 'success' && '✅ Success' || '❌ Failed' }} | United States | ${{ vars.VPN_DOMAIN_US }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| 🇪🇺 EU | ${{ needs.deploy.result == 'success' && '✅ Success' || '❌ Failed' }} | Europe | ${{ vars.VPN_DOMAIN_EU }} |" >> $GITHUB_STEP_SUMMARY
+        else
+          echo "| Environment | Status | Domain |" >> $GITHUB_STEP_SUMMARY
+          echo "|-------------|--------|---------" >> $GITHUB_STEP_SUMMARY
+          echo "| 🔧 Single | ${{ needs.deploy.result == 'success' && '✅ Success' || '❌ Failed' }} | ${{ vars.VPN_DOMAIN }} |" >> $GITHUB_STEP_SUMMARY
+        fi
+        
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "📅 **Deployment Time:** $(date)" >> $GITHUB_STEP_SUMMARY
+        echo "🔗 **Commit:** ${{ github.sha }}" >> $GITHUB_STEP_SUMMARY 

@@ -4,13 +4,39 @@
 
 ## 📋 測試前檢查清單
 
-在開始測試前，請確認以下項目：
+### 🌍 部署架構選擇
+
+在開始測試前，先選擇適合的部署架構：
+
+#### 🔧 單環境部署（推薦新手）
+- 部署一個 VPN 伺服器
+- 適合個人或小團隊使用
+- 成本較低，設定簡單
+
+#### 🌍 多環境部署（企業級）
+- 部署多個區域的 VPN 伺服器（Asia/US/EU）
+- 提供地理分佈和冗餘
+- 需要更多伺服器和 GitHub Secrets 設定
+
+> 📖 **多環境詳細指南**: [MULTI-ENVIRONMENT.md](MULTI-ENVIRONMENT.md)
+
+### 基本需求檢查
+
+#### 單環境部署需求
 
 - [ ] 擁有一台 Linux 伺服器（Ubuntu 20.04+ 或 Debian 11+）
 - [ ] 伺服器具有公網 IP 位址或已設定 DDNS
 - [ ] 擁有域名管理權限（建議使用 Cloudflare）
 - [ ] 路由器管理權限（用於連接埠轉送）
 - [ ] 測試用的客戶端裝置（手機、筆電等）
+
+#### 多環境部署需求
+
+- [ ] 多台 Linux 伺服器（分佈在不同地區）
+- [ ] 每台伺服器具有公網 IP 位址
+- [ ] 域名管理權限，支援多子域名（vpn-asia、vpn-us、vpn-eu）
+- [ ] 每個環境的 SSH 金鑰和 Cloudflare API 權杖
+- [ ] GitHub Actions 環境變數和 Secrets 配置
 
 ## 🚀 快速驗證（推薦起點）
 
@@ -540,22 +566,41 @@ git remote add origin https://github.com/yourusername/QWV-QuickWireguardVpn.git
 git push -u origin main
 ```
 
-#### 10.1.1 配置 GitHub 加密環境變數 (Secrets)
+#### 10.1.1 配置 GitHub Variables 和 Secrets
 
-**必要步驟**：
+**QWV 使用分離式配置管理**：
+- **Variables (公開配置)**: 域名、區域等非敏感信息
+- **Secrets (加密配置)**: SSH 金鑰、API Token 等敏感信息
+
+**配置步驟**：
 1. 前往您的 GitHub 專案頁面
 2. 點擊 **Settings** 選項卡
 3. 在左側選單中選擇 **Secrets and variables** → **Actions**
-4. 點擊 **New repository secret** 按鈕
 
-**必須配置的加密環境變數**：
+**單環境配置 (Legacy 相容)**：
 
+**Variables 頁籤 (公開配置)**：
+| Variable 名稱 | 說明 | 範例值 | 必要性 |
+|--------------|------|--------|--------|
+| `VPN_DOMAIN` | 完整 VPN 域名 | `vpn.917420.xyz` | ✅ 必要 |
+
+**Secrets 頁籤 (敏感信息)**：
 | Secret 名稱 | 說明 | 範例值 | 必要性 |
 |------------|------|--------|--------|
-| `VPN_HOST` | VPN 伺服器的 IP 地址或域名 | `203.0.113.1` 或 `vpn.yourdomain.com` | ✅ 必要 |
+| `VPN_HOST` | VPN 伺服器的 IP 地址 | `203.0.113.1` | ✅ 必要 |
 | `VPN_USER` | 登入伺服器的用戶名 | `ubuntu` 或 `user` | ✅ 必要 |
-| `VPN_SSH_KEY` | SSH 私鑰內容（完整的私鑰文件） | `-----BEGIN OPENSSH PRIVATE KEY-----\n...` | ✅ 必要 |
+| `VPN_SSH_KEY` | SSH 私鑰內容（完整文件） | `-----BEGIN OPENSSH PRIVATE KEY-----\n...` | ✅ 必要 |
 | `VPN_PORT` | SSH 連接埠（如果不是預設的 22） | `2222` 或 `22` | ⚪ 可選 |
+| `CF_API_TOKEN` | Cloudflare API 權杖 | `cf_token_here...` | ✅ 必要 |
+
+**多環境配置 (DNS 服務路由)**：
+
+**Variables 頁籤 (DNS 路由配置)**：
+| Variable 名稱 | 說明 | 範例值 | 用途 |
+|--------------|------|--------|------|
+| `VPN_DOMAIN_ASIA` | 亞洲 VPN 服務域名 | `vpn-asia.917420.xyz` | 🌏 亞洲路由 |
+| `VPN_DOMAIN_US` | 美國 VPN 服務域名 | `vpn-us.917420.xyz` | 🇺🇸 美國路由 |
+| `VPN_DOMAIN_EU` | 歐洲 VPN 服務域名 | `vpn-eu.917420.xyz` | 🇪🇺 歐洲路由 |
 
 #### 10.1.2 SSH 私鑰準備步驟
 
@@ -696,7 +741,52 @@ docker ps --format "table {{.Names}}\t{{.Status}}"
 # 檢查容器的啟動時間
 ```
 
-### 10.4 GitHub Actions 故障排除
+### 10.4 部署控制選項測試
+
+#### 10.4.1 測試自動檢測功能
+
+```bash
+# 測試單環境檢測
+# 只設定原始 Secrets (VPN_HOST, VPN_USER, etc.)
+# 推送程式碼並檢查 GitHub Actions 日誌
+# 預期：自動檢測為 "single" 模式
+
+# 測試多環境檢測
+# 添加至少一個多環境 Secret (如 VPN_HOST_ASIA)
+# 推送程式碼並檢查 GitHub Actions 日誌
+# 預期：自動檢測為 "multi" 模式
+```
+
+#### 10.4.2 測試手動選擇部署
+
+```bash
+# 透過 GitHub Actions UI 測試
+# 1. 前往 GitHub → Actions → Multi-Environment QWV VPN Deployment
+# 2. 點擊 "Run workflow"
+# 3. 測試各種選項：
+
+# auto: 自動檢測模式
+# single: 強制單環境模式（即使有多環境 Secrets）
+# asia: 只部署到亞洲環境
+# us: 只部署到美國環境  
+# eu: 只部署到歐洲環境
+# all: 部署到所有多環境
+```
+
+#### 10.4.3 測試向後相容性
+
+```bash
+# 階段 1：測試原有用戶升級路徑
+# 保持原有 Secrets 設定，確認仍可正常部署
+
+# 階段 2：添加多環境 Secrets
+# 逐步添加多環境 Secrets，測試自動切換
+
+# 階段 3：測試強制單環境模式
+# 即使有多環境 Secrets，仍可選擇 single 模式
+```
+
+### 10.5 GitHub Actions 故障排除
 
 ```bash
 # 如果 GitHub Actions 失敗，檢查常見問題：
@@ -713,6 +803,10 @@ cat .env  # 檢查環境變數設定
 
 # 4. 服務狀態問題
 ./scripts/manage.sh check  # 檢查系統狀態
+
+# 5. 部署模式檢測問題
+# 檢查 GitHub Actions 日誌中的 "Detect Deployment Mode" 步驟
+# 確認檢測結果是否符合預期
 ```
 
 ## 🔧 階段十一：故障測試與排除
@@ -825,16 +919,93 @@ grep "Destination Host Unreachable" ping_test.log
 - [ ] DNS 解析：`[ ] 通過` `[ ] 失敗` 錯誤：`_________`
 
 ### GitHub Actions 測試
+
+#### 自動檢測和向後相容性測試
+- [ ] 部署模式自動檢測：`[ ] 通過` `[ ] 失敗` 錯誤：`_________`
+  - [ ] 單環境 Variables 檢測：`[ ] 正確檢測` 模式：`_________`
+  - [ ] 多環境 Variables 檢測：`[ ] 正確檢測` 模式：`_________`
+  - [ ] Legacy Secrets 處理：`[ ] 正確處理` 優先級：`_________`
+  - [ ] 混合配置處理：`[ ] 正確處理` 檢測結果：`_________`
+
+#### 單環境部署測試（Legacy 相容性）
+- [ ] GitHub Variables 配置：`[ ] 通過` `[ ] 失敗` 錯誤：`_________`
+  - [ ] VPN_DOMAIN 設定：`[ ] 完成` 值：`_________`
 - [ ] GitHub Secrets 配置：`[ ] 通過` `[ ] 失敗` 錯誤：`_________`
   - [ ] VPN_HOST 設定：`[ ] 完成` 值：`_________`
   - [ ] VPN_USER 設定：`[ ] 完成` 值：`_________`
   - [ ] VPN_SSH_KEY 設定：`[ ] 完成` 格式：`[ ] 正確`
   - [ ] VPN_PORT 設定：`[ ] 完成` `[ ] 使用預設` 值：`_________`
+  - [ ] VPN_DEPLOY_PATH 設定：`[ ] 完成` `[ ] 使用預設` 值：`_________`
+  - [ ] CF_API_TOKEN 設定：`[ ] 完成` 格式：`[ ] 正確`
+- [ ] Legacy Secrets 支援：`[ ] 通過` `[ ] 失敗` 錯誤：`_________`
+  - [ ] CF_ZONE (棄用) 設定：`[ ] 檢測到` `[ ] 向下相容` 值：`_________`
+  - [ ] CF_SUBDOMAIN (棄用) 設定：`[ ] 檢測到` `[ ] 向下相容` 值：`_________`
 - [ ] SSH 金鑰驗證：`[ ] 通過` `[ ] 失敗` 錯誤：`_________`
 - [ ] 工作流程觸發：`[ ] 通過` `[ ] 失敗` 錯誤：`_________`
 - [ ] SSH 連線測試：`[ ] 通過` `[ ] 失敗` 錯誤：`_________`
 - [ ] 自動部署：`[ ] 通過` `[ ] 失敗` 錯誤：`_________`
 - [ ] 服務健康檢查：`[ ] 通過` `[ ] 失敗` 錯誤：`_________`
+- [ ] 向後相容性驗證：`[ ] 通過` `[ ] 失敗` 錯誤：`_________`
+
+#### 多環境部署測試
+
+**DNS 服務路由配置測試**
+- [ ] 多環境 Variables 配置：`[ ] 通過` `[ ] 失敗` 錯誤：`_________`
+  - [ ] VPN_DOMAIN_ASIA：`[ ] 完成` 值：`_________`
+  - [ ] VPN_DOMAIN_US：`[ ] 完成` 值：`_________`
+  - [ ] VPN_DOMAIN_EU：`[ ] 完成` 值：`_________`
+
+**🌏 Asia 環境**
+- [ ] 亞洲環境 Secrets 配置：`[ ] 通過` `[ ] 失敗`
+  - [ ] VPN_HOST_ASIA：`[ ] 完成` 值：`_________`
+  - [ ] VPN_USER_ASIA：`[ ] 完成` 值：`_________`
+  - [ ] VPN_SSH_KEY_ASIA：`[ ] 完成` 格式：`[ ] 正確`
+  - [ ] CF_API_TOKEN_ASIA：`[ ] 完成` 格式：`[ ] 正確`
+  - [ ] VPN_DEPLOY_PATH_ASIA：`[ ] 完成` `[ ] 使用預設` 值：`_________`
+- [ ] 亞洲 DNS 路由測試：`[ ] 通過` `[ ] 失敗` 域名：`_________`
+- [ ] 亞洲伺服器部署：`[ ] 通過` `[ ] 失敗` 錯誤：`_________`
+- [ ] 亞洲服務健康檢查：`[ ] 通過` `[ ] 失敗` 錯誤：`_________`
+
+**🇺🇸 US 環境**
+- [ ] 美國環境 Secrets 配置：`[ ] 通過` `[ ] 失敗`
+  - [ ] VPN_HOST_US：`[ ] 完成` 值：`_________`
+  - [ ] VPN_USER_US：`[ ] 完成` 值：`_________`
+  - [ ] VPN_SSH_KEY_US：`[ ] 完成` 格式：`[ ] 正確`
+  - [ ] CF_API_TOKEN_US：`[ ] 完成` 格式：`[ ] 正確`
+  - [ ] VPN_DEPLOY_PATH_US：`[ ] 完成` `[ ] 使用預設` 值：`_________`
+- [ ] 美國 DNS 路由測試：`[ ] 通過` `[ ] 失敗` 域名：`_________`
+- [ ] 美國伺服器部署：`[ ] 通過` `[ ] 失敗` 錯誤：`_________`
+- [ ] 美國服務健康檢查：`[ ] 通過` `[ ] 失敗` 錯誤：`_________`
+
+**🇪🇺 EU 環境**
+- [ ] 歐洲環境 Secrets 配置：`[ ] 通過` `[ ] 失敗`
+  - [ ] VPN_HOST_EU：`[ ] 完成` 值：`_________`
+  - [ ] VPN_USER_EU：`[ ] 完成` 值：`_________`
+  - [ ] VPN_SSH_KEY_EU：`[ ] 完成` 格式：`[ ] 正確`
+  - [ ] CF_API_TOKEN_EU：`[ ] 完成` 格式：`[ ] 正確`
+  - [ ] VPN_DEPLOY_PATH_EU：`[ ] 完成` `[ ] 使用預設` 值：`_________`
+- [ ] 歐洲 DNS 路由測試：`[ ] 通過` `[ ] 失敗` 域名：`_________`
+- [ ] 歐洲伺服器部署：`[ ] 通過` `[ ] 失敗` 錯誤：`_________`
+- [ ] 歐洲服務健康檢查：`[ ] 通過` `[ ] 失敗` 錯誤：`_________`
+
+**多環境整合測試**
+- [ ] 矩陣部署測試：`[ ] 通過` `[ ] 失敗` 錯誤：`_________`
+- [ ] 選擇性部署測試：`[ ] 通過` `[ ] 失敗` 錯誤：`_________`
+- [ ] 部署摘要生成：`[ ] 通過` `[ ] 失敗` 錯誤：`_________`
+- [ ] 失敗恢復機制：`[ ] 通過` `[ ] 失敗` 錯誤：`_________`
+
+**部署控制選項測試**
+- [ ] `auto` 模式：`[ ] 通過` `[ ] 失敗` 檢測結果：`_________`
+- [ ] `single` 強制模式：`[ ] 通過` `[ ] 失敗` 錯誤：`_________`
+- [ ] `asia` 單區域部署：`[ ] 通過` `[ ] 失敗` 錯誤：`_________`
+- [ ] `us` 單區域部署：`[ ] 通過` `[ ] 失敗` 錯誤：`_________`
+- [ ] `eu` 單區域部署：`[ ] 通過` `[ ] 失敗` 錯誤：`_________`
+- [ ] `all` 全區域部署：`[ ] 通過` `[ ] 失敗` 錯誤：`_________`
+
+**向後相容性整合測試**
+- [ ] 從單環境升級到多環境：`[ ] 通過` `[ ] 失敗` 錯誤：`_________`
+- [ ] 混合 Secrets 環境處理：`[ ] 通過` `[ ] 失敗` 錯誤：`_________`
+- [ ] Legacy 用戶平滑升級：`[ ] 通過` `[ ] 失敗` 錯誤：`_________`
 
 ### 效能測試結果
 - 不使用 VPN 速度：`下載 _____ Mbps，上傳 _____ Mbps`
@@ -905,7 +1076,39 @@ curl -X GET "https://api.cloudflare.com/client/v4/user/tokens/verify" \
 
 ### 問題 6：GitHub Actions 部署失敗
 
-#### 6.1 GitHub Secrets 配置問題
+#### 6.1 部署模式檢測問題
+```bash
+# 症狀：部署模式檢測不正確
+# 解決步驟：
+
+# 檢查 Secrets 設定
+# 前往 GitHub → Settings → Secrets and variables → Actions
+# 確認以下設定：
+
+# 單環境模式：只應有 VPN_HOST, VPN_USER, VPN_SSH_KEY 等基本 Secrets
+# 多環境模式：應有 VPN_HOST_ASIA, VPN_HOST_US, VPN_HOST_EU 等多環境 Secrets
+
+# 檢查 GitHub Actions 日誌
+# 查看 "Detect Deployment Mode" 步驟的輸出
+# 確認檢測邏輯是否正確執行
+```
+
+#### 6.2 環境矩陣部署問題
+```bash
+# 症狀：某些環境部署失敗，其他成功
+# 解決步驟：
+
+# 檢查失敗環境的特定 Secrets
+# 每個環境都需要獨立的 Secrets 設定
+
+# 測試特定環境的 SSH 連線
+ssh -i ~/.ssh/specific_env_key user@specific_host "echo 'Test connection'"
+
+# 檢查 fail-fast 設定
+# 確保矩陣策略中 fail-fast: false 正確設定
+```
+
+#### 6.3 GitHub Secrets 配置問題
 ```bash
 # 檢查 Secrets 是否正確設定
 # 常見錯誤和解決方案：
@@ -931,6 +1134,18 @@ ssh user@host "groups \$USER | grep docker"
 # 症狀：SSH 連線被拒絕
 # 解決：確認 SSH 連接埠設定
 ssh -p $VPN_PORT user@host "echo 'Connection successful'"
+
+# 錯誤 5：多環境配置不完整
+# 症狀：某些環境檢測到但無法部署
+# 解決：確保每個環境都有完整的配置
+# Variables: VPN_DOMAIN_* (asia/us/eu)
+# Secrets: VPN_HOST_*, VPN_USER_*, VPN_SSH_KEY_*, CF_API_TOKEN_*
+
+# 錯誤 6：Variables 和 Secrets 分離問題
+# 症狀：配置檢測失敗或域名解析問題
+# 解決：檢查 Variables 和 Secrets 的正確分離
+# Variables 頁籤：VPN_DOMAIN 相關配置
+# Secrets 頁籤：敏感信息（SSH key, API token 等）
 ```
 
 #### 6.2 SSH 金鑰問題診斷
