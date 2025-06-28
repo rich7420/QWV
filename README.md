@@ -1,763 +1,697 @@
 # QWV - QuickWireguardVpn
 
-🚀 使用 Docker、WireGuard 與 Cloudflare 建構現代化、安全且可維護的個人 VPN
+🚀 Build a modern, secure, and maintainable personal VPN using Docker, WireGuard, and Cloudflare
 
 [![Docker](https://img.shields.io/badge/Docker-2496ED?style=flat&logo=docker&logoColor=white)](https://www.docker.com/)
 [![WireGuard](https://img.shields.io/badge/WireGuard-88171A?style=flat&logo=wireguard&logoColor=white)](https://www.wireguard.com/)
 [![Cloudflare](https://img.shields.io/badge/Cloudflare-F38020?style=flat&logo=cloudflare&logoColor=white)](https://www.cloudflare.com/)
 [![GitHub Actions](https://img.shields.io/badge/GitHub_Actions-2088FF?style=flat&logo=github-actions&logoColor=white)](https://github.com/features/actions)
 
-## 📋 專案概述
+## 📋 Project Overview
 
-QWV 是一個完整的企業級 WireGuard VPN 解決方案，採用現代化的 DevOps 最佳實踐：
+QWV is a complete enterprise-grade WireGuard VPN solution that adopts modern DevOps best practices:
 
-- **🔒 現代化安全性**: 採用 WireGuard 協定，提供比 OpenVPN 快 3.2 倍的性能和更小的攻擊面
-- **🐳 容器化部署**: 使用 Docker 實現環境隔離、依賴管理和一鍵部署
-- **🌐 動態 DNS**: 整合 Cloudflare DDNS 自動處理動態 IP，支援家庭網路環境
-- **⚙️ 設定即程式碼**: 完全透過版本控制管理基礎設施，實現可追蹤、可重複的部署
-- **🔄 GitOps 工作流程**: 使用 GitHub Actions 實現推送即部署的自動化工作流程
-- **🛠️ 自動化管理**: 內建完整的管理腳本，簡化日常維運工作
-- **📊 CGNAT 支援**: 提供 CGNAT 環境的替代解決方案
+- **🔒 Modern Security**: Uses WireGuard protocol, providing 3.2x faster performance than OpenVPN with a smaller attack surface
+- **🐳 Containerized Deployment**: Docker-based environment isolation, dependency management, and one-click deployment
+- **🌐 Dynamic DNS**: Integrated Cloudflare DDNS automatically handles dynamic IPs, supports home network environments
+- **⚙️ Infrastructure as Code**: Fully manage infrastructure through version control, enabling traceable and repeatable deployments
+- **🔄 GitOps Workflow**: GitHub Actions enables push-to-deploy automation workflow
+- **🛠️ Automated Management**: Built-in comprehensive management scripts to simplify daily operations
+- **📊 CGNAT Support**: Provides alternative solutions for CGNAT environments
 
-## 🏗️ 專案架構
+## 🏗️ Project Architecture
 
 ```
 QWV-QuickWireguardVpn/
-├── 📋 規劃書.md                 # 完整的技術文檔和設計理念
-├── 🔧 docker-compose.yml        # 服務編排設定
-├── ⚙️ env.example              # 環境變數範本
-├── 📝 README.md                # 專案文檔
-├── 🔐 .gitignore               # Git 忽略設定
-├── 🤖 .github/workflows/       # GitHub Actions 工作流程
-│   └── deploy.yml              # 自動部署腳本
-├── 📂 scripts/                 # 管理腳本
-│   ├── setup.sh               # 初始環境設定
-│   └── manage.sh               # 服務管理工具
-├── 📁 config/                  # WireGuard 設定檔 (自動生成)
-├── 💾 backup/                  # 備份檔案目錄
-└── 📊 logs/                    # 日誌檔案目錄
+├── 📋 規劃書.md                 # Complete technical documentation and design concepts
+├── 🔧 docker-compose.yml        # Service orchestration configuration
+├── ⚙️ env.example              # Environment variable template
+├── 📝 README.md                # Project documentation
+├── 🔐 .gitignore               # Git ignore configuration
+├── 🤖 .github/workflows/       # GitHub Actions workflows
+│   └── deploy.yml              # Automated deployment script
+├── 📂 scripts/                 # Management scripts
+│   ├── setup.sh               # Initial environment setup
+│   ├── manage.sh               # Service management tool
+│   └── validate.sh             # Project validation script
+├── 📁 config/                  # WireGuard configuration files (auto-generated)
+├── 💾 backup/                  # Backup files directory
+└── 📊 logs/                    # Log files directory
 ```
 
-### 核心服務架構
+### Core Service Architecture
 
 ```
 Internet → Router → Server → Docker → [WireGuard + DDNS]
     ↓
-    └─ Client Devices (手機、筆電等)
+    └─ Client Devices (Mobile, Laptop, etc.)
 ```
 
-## 🚀 快速開始
+## 🚀 Quick Start
 
-### ⚠️ 重要：CGNAT 檢測
+### ⚠️ Important: CGNAT Detection
 
-**在開始之前，請先檢查您的網路環境是否支援：**
+**Before starting, please check if your network environment is supported:**
 
-1. 登入路由器管理介面，記錄 WAN IP 位址
-2. 訪問 [whatismyipaddress.com](https://whatismyipaddress.com) 查看公網 IP
-3. 如果兩者不同，您可能處於 CGNAT 環境，需要使用 VPS 反向代理方案
+1. Log into your router management interface and record the WAN IP address
+2. Visit [whatismyipaddress.com](https://whatismyipaddress.com) to check your public IP
+3. If they differ, you may be in a CGNAT environment and need a VPS reverse proxy solution
 
-### 系統需求
+### System Requirements
 
-| 項目 | 最低需求 | 推薦配置 |
-|------|----------|----------|
-| 作業系統 | Ubuntu 20.04+ / Debian 11+ | Ubuntu 22.04 LTS |
-| CPU | 1 核心 | 2 核心 |
-| 記憶體 | 512MB | 1GB |
-| 儲存空間 | 2GB | 5GB |
-| 網路 | 10Mbps | 100Mbps |
+| Item | Minimum Requirement | Recommended |
+|------|-------------------|-------------|
+| Operating System | Ubuntu 20.04+ / Debian 11+ | Ubuntu 22.04 LTS |
+| CPU | 1 core | 2 cores |
+| Memory | 512MB | 1GB |
+| Storage | 2GB | 5GB |
+| Network | 10Mbps | 100Mbps |
 
-### 前置需求
+### Prerequisites
 
-- ✅ Linux 伺服器（支援 Ubuntu/Debian）
-- ✅ 具有 sudo 權限的使用者帳戶
-- ✅ 擁有管理權限的域名（推薦使用 Cloudflare）
-- ✅ 路由器管理權限（用於連接埠轉送）
-- ✅ SSH 存取伺服器的能力
-- ⚠️ 確認非 CGNAT 環境
+- ✅ Linux server (supports Ubuntu/Debian)
+- ✅ User account with sudo privileges
+- ✅ Domain with management permissions (Cloudflare recommended)
+- ✅ Router management permissions (for port forwarding)
+- ✅ SSH access to the server
+- ⚠️ Confirmed non-CGNAT environment
 
-## 📥 安裝指南
+## 📥 Installation Guide
 
-### 方法一：全自動安裝（推薦）
+### Method 1: Fully Automated Installation (Recommended)
 
 ```bash
-# 1. 克隆專案到伺服器
-git clone https://github.com/yourusername/QWV-QuickWireguardVpn.git
-cd QWV-QuickWireguardVpn
+# 1. Clone the project to your server
+git clone https://github.com/rich7420/QWV.git
+cd QWV
 
-# 2. 執行一鍵安裝腳本
+# 2. Run one-click installation script
 chmod +x scripts/*.sh
 ./scripts/setup.sh
 
-# 3. 登出並重新登入以使 Docker 群組生效
+# 3. Log out and back in for Docker group to take effect
 exit
-# 重新 SSH 連線
+# Reconnect via SSH
 
-# 4. 配置環境變數
+# 4. Configure environment variables
 cp env.example .env
 nano .env
 
-# 5. 啟動服務
+# 5. Start services
 ./scripts/manage.sh start
 ```
 
-### 方法二：手動安裝
+### Method 2: Manual Installation
 
 <details>
-<summary>點擊展開手動安裝步驟</summary>
+<summary>Click to expand manual installation steps</summary>
 
 ```bash
-# 更新系統
+# Update system
 sudo apt update && sudo apt upgrade -y
 
-# 安裝 Docker 官方最新版本
+# Install official latest Docker version
 curl -fsSL https://get.docker.com -o get-docker.sh
 sudo sh get-docker.sh
 rm get-docker.sh
 
-# 安裝其他依賴
+# Install other dependencies
 sudo apt install -y ufw git curl
 
-# 設定 Docker 權限
+# Set up Docker permissions
 sudo usermod -aG docker $USER
 
-# 設定防火牆
+# Configure firewall
 sudo ufw default deny incoming
 sudo ufw default allow outgoing
 sudo ufw allow ssh
 sudo ufw allow 51820/udp
 sudo ufw --force enable
 
-# 啟用 IP 轉送
+# Enable IP forwarding
 echo 'net.ipv4.ip_forward=1' | sudo tee -a /etc/sysctl.conf
 sudo sysctl -p
 
-# 啟動 Docker
+# Start Docker
 sudo systemctl enable docker
 sudo systemctl start docker
 
-# 克隆專案
-git clone https://github.com/yourusername/QWV-QuickWireguardVpn.git
-cd QWV-QuickWireguardVpn
+# Clone project
+git clone https://github.com/rich7420/QWV.git
+cd QWV
 
-# 建立目錄
+# Create directories
 mkdir -p config logs backup
 ```
 
 </details>
 
-## ⚙️ 詳細設定說明
+## ⚙️ Detailed Configuration
 
-### 1. Cloudflare 設定
+### 1. Cloudflare Configuration
 
-#### 建立 API 權杖（遵循最小權限原則）
+#### Create API Token (Following Principle of Least Privilege)
 
-1. 登入 [Cloudflare 儀表板](https://dash.cloudflare.com)
-2. 點擊右上角頭像 → 「我的設定檔」
-3. 選擇「API 權杖」頁籤
-4. 點擊「建立權杖」
-5. 選擇「編輯區域 DNS」範本
-6. 設定權限：
+1. Log into [Cloudflare Dashboard](https://dash.cloudflare.com)
+2. Click profile avatar in top right → "My Profile"
+3. Select "API Tokens" tab
+4. Click "Create Token"
+5. Select "Edit zone DNS" template
+6. Configure permissions:
    ```
-   權限：Zone:DNS:Edit
-   區域資源：Include - Specific zone - yourdomain.com
+   Permissions: Zone:DNS:Edit
+   Zone resources: Include - Specific zone - yourdomain.com
    
-   權限：Zone:Zone:Read  
-   區域資源：Include - Specific zone - yourdomain.com
+   Permissions: Zone:Zone:Read  
+   Zone resources: Include - Specific zone - yourdomain.com
    ```
-7. 複製生成的權杖並妥善保存
+7. Copy the generated token and store it securely
 
-#### 設定 DNS 記錄
+#### Set up DNS Record
 
-在 Cloudflare 中為您的域名新增一個 A 記錄：
-- **名稱**: `vpn`
-- **內容**: 您的當前公網 IP（DDNS 會自動更新）
-- **Proxy 狀態**: 🌐（灰雲，關閉代理）
+Add an A record in Cloudflare for your domain:
+- **Name**: `vpn`
+- **Content**: Your current public IP (DDNS will auto-update)
+- **Proxy status**: 🌐 (Gray cloud, proxy disabled)
 
-### 2. 環境變數設定
+### 2. Environment Variable Configuration
 
-編輯 `.env` 檔案：
+Edit the `.env` file:
 
 ```bash
-# 必要設定
+# Required settings
 CF_API_TOKEN=your_cloudflare_api_token_here
 CF_ZONE=yourdomain.com
 CF_SUBDOMAIN=vpn
 
-# 可選設定（進階用戶）
+# Optional settings (for advanced users)
 # WIREGUARD_PORT=51820
 # WIREGUARD_PEERS=laptop,phone,tablet
 # INTERNAL_SUBNET=10.13.13.0
 ```
 
-### 3. 路由器設定
+### 3. Router Configuration
 
-#### 連接埠轉送設定
+#### Port Forwarding Setup
 
-1. 登入路由器管理介面（通常是 192.168.1.1 或 192.168.0.1）
-2. 尋找「連接埠轉送」、「虛擬伺服器」或「Port Forwarding」設定
-3. 新增規則：
+1. Log into router management interface (usually 192.168.1.1 or 192.168.0.1)
+2. Find "Port Forwarding", "Virtual Server", or "Port Forwarding" settings
+3. Add rule:
    ```
-   服務名稱: WireGuard
-   協定: UDP
-   外部連接埠: 51820
-   內部 IP: 您的伺服器內網 IP (例如 192.168.1.100)
-   內部連接埠: 51820
-   狀態: 啟用
+   Service Name: WireGuard
+   Protocol: UDP
+   External Port: 51820
+   Internal IP: Your server's LAN IP (e.g., 192.168.1.100)
+   Internal Port: 51820
+   Status: Enabled
    ```
 
-#### 常見路由器品牌設定位置
+#### Common Router Brand Configuration Paths
 
-| 品牌 | 設定路徑 |
-|------|----------|
-| TP-Link | 進階 → NAT 轉送 → 虛擬伺服器 |
-| ASUS | 進階設定 → WAN → 虛擬伺服器/連接埠轉送 |
-| Netgear | 進階 → 進階設定 → 連接埠轉送/連接埠觸發 |
-| D-Link | 進階 → 連接埠轉送 |
+| Brand | Configuration Path |
+|-------|-------------------|
+| TP-Link | Advanced → NAT Forwarding → Virtual Servers |
+| ASUS | Advanced Settings → WAN → Virtual Server/Port Forwarding |
+| Netgear | Advanced → Advanced Setup → Port Forwarding/Port Triggering |
+| D-Link | Advanced → Port Forwarding |
 
-### 4. 服務自訂設定
+### 4. Service Customization
 
-#### 修改 WireGuard 設定
+#### Modify WireGuard Configuration
 
-編輯 `docker-compose.yml` 中的環境變數：
+Edit environment variables in `docker-compose.yml`:
 
 ```yaml
 environment:
-  - PEERS=laptop,phone,tablet,work_computer  # 客戶端列表
-  - SERVERPORT=51820                         # VPN 連接埠
-  - PEERDNS=1.1.1.1,8.8.8.8                # 自訂 DNS 伺服器
-  - ALLOWEDIPS=0.0.0.0/0, ::/0              # 全隧道模式
-  - PERSISTENTKEEPALIVE_PEERS=all           # 保持連線活躍
+  - PEERS=laptop,phone,tablet,work_computer  # Client list
+  - SERVERPORT=51820                         # VPN port
+  - PEERDNS=1.1.1.1,8.8.8.8                # Custom DNS servers
+  - ALLOWEDIPS=0.0.0.0/0, ::/0              # Full tunnel mode
+  - PERSISTENTKEEPALIVE_PEERS=all           # Keep connections alive
 ```
 
-#### 分割隧道設定（僅路由特定流量）
+#### Split Tunnel Configuration (Route only specific traffic)
 
-若只想透過 VPN 存取內網資源：
+To only route internal network traffic through VPN:
 
 ```yaml
 - ALLOWEDIPS=192.168.1.0/24,10.13.13.0/24
 ```
 
-## 📱 客戶端設定與連線
+## 📱 Client Configuration and Connection
 
-### 1. 手機客戶端設定（Android/iOS）
+### 1. Mobile Client Setup (Android/iOS)
 
-#### 安裝 WireGuard 應用程式
+#### Install WireGuard App
 
 - **Android**: [Google Play Store](https://play.google.com/store/apps/details?id=com.wireguard.android)
 - **iOS**: [App Store](https://apps.apple.com/app/wireguard/id1441195209)
 
-#### 設定步驟
+#### Setup Steps
 
 ```bash
-# 1. 顯示客戶端 QR Code
+# 1. Display client QR Code
 ./scripts/manage.sh qr phone
 
-# 2. 在手機應用程式中：
-#    - 點擊「+」→「從 QR code 建立」
-#    - 掃描終端顯示的 QR Code
-#    - 為隧道命名（例如：Home VPN）
-#    - 點擊「建立隧道」
+# 2. In mobile app:
+#    - Tap "+" → "Create from QR code"
+#    - Scan the QR code displayed in terminal
+#    - Name the tunnel (e.g., "Home VPN")
+#    - Tap "Create tunnel"
 ```
 
-### 2. 桌面客戶端設定
+### 2. Desktop Client Setup
 
-#### 下載 WireGuard 客戶端
+#### Download WireGuard Client
 
-- **Windows**: [官方下載](https://download.wireguard.com/windows-client/wireguard-installer.exe)
-- **macOS**: [App Store](https://apps.apple.com/app/wireguard/id1451685025) 或 `brew install wireguard-tools`
-- **Linux**: `sudo apt install wireguard` 或包管理器安裝
+- **Windows**: [Official Download](https://download.wireguard.com/windows-client/wireguard-installer.exe)
+- **macOS**: [App Store](https://apps.apple.com/app/wireguard/id1451685025) or `brew install wireguard-tools`
+- **Linux**: `sudo apt install wireguard` or install via package manager
 
-#### 設定步驟
+#### Setup Steps
 
 ```bash
-# 1. 獲取設定檔
-./scripts/manage.sh qr laptop  # 查看設定檔位置
+# 1. Get configuration file
+./scripts/manage.sh qr laptop  # View config file location
 
-# 2. 複製設定檔到本機
+# 2. Copy config file to local machine
 scp user@server:/path/to/config/peer_laptop/peer_laptop.conf ~/wireguard.conf
 
-# 3. 在 WireGuard 客戶端中匯入設定檔
+# 3. Import config file in WireGuard client
 ```
 
-### 3. 新增客戶端
+### 3. Add New Client
 
 ```bash
-# 1. 編輯 docker-compose.yml
+# 1. Edit docker-compose.yml
 nano docker-compose.yml
 
-# 2. 修改 PEERS 環境變數
+# 2. Modify PEERS environment variable
 - PEERS=laptop,phone,tablet,work_computer
 
-# 3. 重新啟動服務
+# 3. Restart service
 ./scripts/manage.sh restart
 
-# 4. 獲取新客戶端的 QR Code
+# 4. Get QR code for new client
 ./scripts/manage.sh qr work_computer
 ```
 
-## 🛠️ 服務管理指令
+## 🛠️ Service Management Commands
 
-### 基本操作
+### Basic Operations
 
 ```bash
-# 啟動所有服務
+# Start all services
 ./scripts/manage.sh start
 
-# 停止所有服務  
+# Stop all services  
 ./scripts/manage.sh stop
 
-# 重啟服務
+# Restart services
 ./scripts/manage.sh restart
 
-# 查看服務狀態和資源使用
+# View service status and resource usage
 ./scripts/manage.sh status
 ```
 
-### 監控與除錯
+### Monitoring and Debugging
 
 ```bash
-# 即時查看日誌
+# View logs in real-time
 ./scripts/manage.sh logs
 
-# 顯示已連線的客戶端
+# Show connected clients
 ./scripts/manage.sh peers
 
-# 全面系統檢查
+# Comprehensive system check
 ./scripts/manage.sh check
 
-# 執行專案完整驗證
+# Run complete project validation
 ./scripts/manage.sh validate
 
-# 顯示特定客戶端的 QR Code
-./scripts/manage.sh qr <客戶端名稱>
+# Display QR code for specific client
+./scripts/manage.sh qr <client_name>
 ```
 
-### 維護操作
+### Maintenance Operations
 
 ```bash
-# 更新服務映像檔
+# Update service images
 ./scripts/manage.sh update
 
-# 備份設定檔（包含所有金鑰）
+# Backup configuration files (including all keys)
 ./scripts/manage.sh backup
 
-# 查看可用指令
+# View available commands
 ./scripts/manage.sh --help
 ```
 
-### 進階管理
+### Advanced Management
 
 ```bash
-# 手動 Docker 操作
-docker compose ps                    # 查看容器狀態
-docker compose logs -f wireguard     # 查看 WireGuard 日誌
-docker compose logs -f cloudflare-ddns # 查看 DDNS 日誌
+# Manual Docker operations
+docker compose ps                    # View container status
+docker compose logs -f wireguard     # View WireGuard logs
+docker compose logs -f cloudflare-ddns # View DDNS logs
 
-# 進入 WireGuard 容器
+# Enter WireGuard container
 docker exec -it wireguard bash
 
-# 查看 WireGuard 介面狀態
+# View WireGuard interface status
 docker exec wireguard wg show
 
-# 查看網路設定
+# View network configuration
 docker exec wireguard ip addr show wg0
 ```
 
-## 🔍 故障排除指南
+## 🔍 Troubleshooting Guide
 
-### 診斷工具
+### Diagnostic Tools
 
 ```bash
-# 一鍵系統檢查
+# One-click system check
 ./scripts/manage.sh check
 
-# 查看詳細日誌
+# View detailed logs
 ./scripts/manage.sh logs | grep -i error
 
-# 檢查網路連通性
+# Check network connectivity
 ping vpn.yourdomain.com
 nslookup vpn.yourdomain.com
 ```
 
-### 常見問題與解決方案
+### Common Issues and Solutions
 
-#### 🚫 問題 1：無法建立握手
+#### 🚫 Issue 1: Cannot Establish Handshake
 
-**症狀**: 客戶端顯示「最後握手：從未」
+**Symptom**: Client shows "latest handshake: never"
 
-**可能原因與解決方案**:
+**Possible Causes and Solutions**:
 
 <details>
-<summary>🔥 防火牆阻擋</summary>
+<summary>🔥 Firewall Blocking</summary>
 
 ```bash
-# 檢查 UFW 狀態
+# Check UFW status
 sudo ufw status numbered
 
-# 確認 WireGuard 連接埠已開放
+# Ensure WireGuard port is open
 sudo ufw allow 51820/udp
 
-# 檢查 iptables 規則
+# Check iptables rules
 sudo iptables -L -n | grep 51820
 ```
 
 </details>
 
 <details>
-<summary>🌐 路由器連接埠轉送問題</summary>
+<summary>🌐 Router Port Forwarding Issues</summary>
 
-1. 重新檢查路由器設定：
-   - 協定：UDP（不是 TCP）
-   - 外部連接埠：51820
-   - 內部 IP：正確的伺服器 IP
-   - 內部連接埠：51820
+1. Re-check router settings:
+   - Protocol: UDP (not TCP)
+   - External port: 51820
+   - Internal IP: Correct server IP
+   - Internal port: 51820
 
-2. 測試連接埠是否開放：
+2. Test if port is open:
 ```bash
-# 從外部網路測試（使用其他網路）
+# Test from external network (use different network)
 nc -u vpn.yourdomain.com 51820
 ```
 
 </details>
 
 <details>
-<summary>⚠️ CGNAT 檢測</summary>
+<summary>⚠️ CGNAT Detection</summary>
 
 ```bash
-# 自動檢測腳本
+# Automatic detection script
 curl -s https://ipinfo.io/ip > /tmp/external_ip
 cat /tmp/external_ip
 
-# 比較路由器 WAN IP
-# 如果不同，可能有 CGNAT 問題
+# Compare with router WAN IP
+# If different, may have CGNAT issues
 ```
 
 </details>
 
-#### 🌍 問題 2：有握手但無法上網
+#### 🌍 Issue 2: Handshake Works but No Internet
 
-**症狀**: WireGuard 顯示已連線，但無法瀏覽網頁
+**Symptom**: WireGuard shows connected, but cannot browse web
 
 <details>
-<summary>🔍 DNS 解析問題</summary>
+<summary>🔍 DNS Resolution Issues</summary>
 
 ```bash
-# 在客戶端測試
-ping 8.8.8.8        # 如果成功，IP 路由正常
-ping google.com     # 如果失敗，DNS 問題
+# Test on client
+ping 8.8.8.8        # If successful, IP routing works
+ping google.com     # If fails, DNS issue
 
-# 修復方法：編輯 docker-compose.yml
+# Fix: Edit docker-compose.yml
 - PEERDNS=1.1.1.1,8.8.8.8
-- ALLOWEDIPS=0.0.0.0/0, ::/0  # 確保包含 DNS 流量
 ```
 
 </details>
 
 <details>
-<summary>🔄 IP 轉送問題</summary>
+<summary>🛣️ Routing Issues</summary>
 
 ```bash
-# 檢查 IP 轉送是否啟用
-cat /proc/sys/net/ipv4/ip_forward  # 應該顯示 1
+# Check server IP forwarding
+cat /proc/sys/net/ipv4/ip_forward
+# Should output: 1
 
-# 如果顯示 0，啟用 IP 轉送
-echo 'net.ipv4.ip_forward=1' | sudo tee -a /etc/sysctl.conf
-sudo sysctl -p
-
-# 重啟服務
-./scripts/manage.sh restart
+# Check WireGuard interface
+docker exec wireguard ip route show table main
 ```
 
 </details>
 
-#### 🔧 問題 3：DDNS 更新失敗
+#### 🌐 Issue 3: DDNS Not Updating
+
+**Symptom**: Domain doesn't resolve to current IP
 
 <details>
-<summary>📡 Cloudflare API 問題</summary>
+<summary>🔑 API Token Issues</summary>
 
 ```bash
-# 檢查 DDNS 容器日誌
-docker compose logs cloudflare-ddns
-
-# 測試 API 權杖
+# Test API token validity
 curl -X GET "https://api.cloudflare.com/client/v4/user/tokens/verify" \
      -H "Authorization: Bearer YOUR_API_TOKEN" \
      -H "Content-Type:application/json"
 
-# 確認權杖權限：Zone:DNS:Edit 和 Zone:Zone:Read
+# Should return: {"success": true}
 ```
 
 </details>
-
-#### 💻 問題 4：Docker 相關問題
 
 <details>
-<summary>🐳 Docker 權限問題</summary>
+<summary>📡 Network Connection Issues</summary>
 
 ```bash
-# 檢查 Docker 權限
-groups $USER | grep docker
+# Check DDNS container logs
+docker logs cloudflare-ddns
 
-# 如果沒有 docker 群組，重新加入
-sudo usermod -aG docker $USER
-# 登出並重新登入
-
-# 重啟 Docker 服務
-sudo systemctl restart docker
+# Test DNS propagation
+dig vpn.yourdomain.com
+nslookup vpn.yourdomain.com 8.8.8.8
 ```
 
 </details>
 
-### 進階除錯
+#### 🤖 Issue 4: GitHub Actions Deployment Fails
 
-#### 📊 效能監控
+**Symptom**: Automated deployment fails in GitHub Actions
+
+<details>
+<summary>🔐 GitHub Secrets Configuration Issues</summary>
 
 ```bash
-# 監控容器資源使用
-docker stats
+# Common errors and solutions:
 
-# 檢查網路延遲
-ping -c 4 vpn.yourdomain.com
+# Error 1: VPN_SSH_KEY format incorrect
+# Symptom: SSH connection fails, shows "invalid format" or "bad permissions"
+# Solution: Ensure private key includes complete BEGIN and END lines
+cat ~/.ssh/github_actions_key | pbcopy  # macOS
+cat ~/.ssh/github_actions_key | xclip -selection clipboard  # Linux
 
-# 測試 VPN 速度
-docker exec wireguard speedtest-cli
+# Error 2: VPN_HOST cannot connect
+# Symptom: Connection timeout or host unreachable
+# Solution: Confirm server IP or domain is correct
+ping $VPN_HOST  # Local connectivity test
+nslookup $VPN_HOST  # If using domain
+
+# Error 3: VPN_USER insufficient permissions
+# Symptom: SSH connection succeeds but Docker commands fail
+# Solution: Confirm user is in docker group
+ssh user@host "groups \$USER | grep docker"
+
+# Error 4: VPN_PORT setting error
+# Symptom: SSH connection refused
+# Solution: Confirm SSH port setting
+ssh -p $VPN_PORT user@host "echo 'Connection successful'"
 ```
 
-#### 🔬 網路診斷
+</details>
+
+<details>
+<summary>🔧 SSH Key Issues Diagnosis</summary>
 
 ```bash
-# 查看 WireGuard 介面詳情
-docker exec wireguard wg show all
+# Local SSH connection test (simulate GitHub Actions environment)
+ssh -i ~/.ssh/github_actions_key -o StrictHostKeyChecking=no user@your-server-ip
 
-# 檢查路由表
-docker exec wireguard ip route
+# Check server-side SSH configuration
+ssh user@host "cat ~/.ssh/authorized_keys | grep github-actions"
 
-# 抓取網路封包
-docker exec wireguard tcpdump -i wg0 -n
+# Check key permissions
+ssh user@host "ls -la ~/.ssh/"
+# Expected: drwx------ .ssh/ and -rw------- authorized_keys
+
+# Test Docker permissions
+ssh -i ~/.ssh/github_actions_key user@host "docker ps"
+# Expected: Able to execute Docker commands
 ```
 
-#### 📋 日誌分析
+</details>
+
+## 🤖 GitHub Actions Automated Deployment
+
+### GitHub Secrets Configuration
+
+To enable automated deployment, configure the following secrets in your GitHub repository:
+
+**Navigate to**: Settings → Secrets and variables → Actions
+
+| Secret Name | Description | Example Value | Required |
+|-------------|-------------|---------------|----------|
+| `VPN_HOST` | VPN server IP address or domain | `203.0.113.1` or `vpn.yourdomain.com` | ✅ Required |
+| `VPN_USER` | Login username for server | `ubuntu` or `user` | ✅ Required |
+| `VPN_SSH_KEY` | SSH private key content (complete private key file) | `-----BEGIN OPENSSH PRIVATE KEY-----\n...` | ✅ Required |
+| `VPN_PORT` | SSH port (if not default 22) | `2222` or `22` | ⚪ Optional |
+
+### SSH Key Preparation Steps
+
+**On your local computer:**
 
 ```bash
-# 查看特定時間段的日誌
-docker compose logs --since="2024-01-01T10:00:00" wireguard
+# 1. Generate SSH key pair (if you don't have one)
+ssh-keygen -t ed25519 -C "github-actions@yourdomain.com" -f ~/.ssh/github_actions_key
 
-# 過濾錯誤訊息
-docker compose logs wireguard | grep -i "error\|fail\|unable"
+# 2. Copy private key content (for GitHub Secret)
+cat ~/.ssh/github_actions_key
+# ⚠️ Copy complete output (including BEGIN and END lines)
 
-# 匯出日誌到檔案
-docker compose logs > vpn_logs_$(date +%Y%m%d).txt
+# 3. Copy public key to server
+ssh-copy-id -i ~/.ssh/github_actions_key.pub user@your-server-ip
+
+# Or manually add public key
+cat ~/.ssh/github_actions_key.pub
+# Copy output to server's ~/.ssh/authorized_keys
 ```
 
-## 🔐 安全最佳實踐
+### Deployment Workflow
 
-- ✅ 使用最小權限 API 權杖
-- ✅ 定期備份設定檔
-- ✅ 啟用 UFW 防火牆
-- ✅ 將敏感資訊存於 `.env` 檔案（勿提交至 Git）
-- ✅ 使用私有 Git 儲存庫
+The GitHub Actions workflow automatically:
 
-## 🚀 GitOps 工作流程
+1. ✅ Validates project configuration
+2. ✅ Connects to your server via SSH
+3. ✅ Pulls latest code changes
+4. ✅ Stops existing services
+5. ✅ Updates Docker images
+6. ✅ Starts services with new configuration
+7. ✅ Cleans up old images
+8. ✅ Verifies service status
 
-### 設定自動化部署
-
-本專案支援完整的 GitOps 工作流程，實現「推送即部署」的自動化體驗。
-
-#### 1. 設定 GitHub Secrets
-
-在 GitHub 儲存庫中設定以下 Secrets（Settings → Secrets and variables → Actions）：
-
-| Secret 名稱 | 說明 | 範例值 | 必要性 |
-|-------------|------|--------|---------|
-| `VPN_HOST` | 伺服器 IP 或域名 | `123.456.789.012` | ✅ 必要 |
-| `VPN_USER` | SSH 用戶名 | `ubuntu` | ✅ 必要 |
-| `VPN_SSH_KEY` | SSH 私鑰 | `-----BEGIN OPENSSH PRIVATE KEY-----...` | ✅ 必要 |
-| `VPN_PORT` | SSH 連接埠 | `22` | ⚪ 可選 |
-| `VPN_DEPLOY_PATH` | 部署路徑 | `/home/ubuntu/QWV-QuickWireguardVpn` | ✅ 必要 |
-| `CF_API_TOKEN` | Cloudflare API 權杖 | `abc123...` | ✅ 必要 |
-| `CF_ZONE` | 域名 | `yourdomain.com` | ✅ 必要 |
-| `CF_SUBDOMAIN` | 子域名 | `vpn` | ✅ 必要 |
-
-#### 2. 生成 SSH 金鑰對
+#### Trigger Deployment
 
 ```bash
-# 在本機生成 SSH 金鑰對
-ssh-keygen -t ed25519 -f ~/.ssh/vpn_deploy -N ""
-
-# 將公鑰複製到伺服器
-ssh-copy-id -i ~/.ssh/vpn_deploy.pub user@your-server
-
-# 將私鑰內容複製到 GitHub Secrets 的 VPN_SSH_KEY
-cat ~/.ssh/vpn_deploy
-```
-
-#### 3. 自動部署工作流程
-
-推送到 `main` 分支時，GitHub Actions 會自動：
-
-1. ✅ SSH 連線到您的伺服器
-2. ✅ 拉取最新程式碼
-3. ✅ 停止現有服務
-4. ✅ 更新 Docker 映像檔
-5. ✅ 使用新設定啟動服務
-6. ✅ 清理舊映像檔
-7. ✅ 驗證服務狀態
-
-#### 4. 觸發部署
-
-```bash
-# 修改設定後推送
+# Push changes to trigger deployment
 git add .
-git commit -m "feat: 更新 VPN 設定"
+git commit -m "feat: Update VPN configuration"
 git push origin main
 
-# 檢查部署狀態
-# 前往 GitHub → Actions 頁籤查看執行結果
+# Check deployment status
+# Go to GitHub → Actions tab to view execution results
 ```
 
-#### 5. GitHub Actions 故障排除
+## 📚 Advanced Topics and Best Practices
 
-<details>
-<summary>🚨 常見 GitHub Actions 錯誤及解決方案</summary>
+### 🔧 Client Management
 
-##### ❌ SSH 連線失敗
-
-**錯誤訊息**: `ssh-keyscan` 或 `Permission denied`
-
-**解決方案**:
-1. 檢查 `VPN_SSH_KEY` 是否正確（包含完整的私鑰內容）
-2. 確認 `VPN_HOST` 和 `VPN_USER` 設定正確
-3. 如果使用非標準 SSH 連接埠，設定 `VPN_PORT`
+#### Add New Client
 
 ```bash
-# 測試 SSH 連線
-ssh -i ~/.ssh/your_key user@host
-
-# 檢查 SSH 金鑰格式
-cat ~/.ssh/your_key | head -1  # 應顯示 -----BEGIN...
-```
-
-##### ❌ Git 操作失敗
-
-**錯誤訊息**: `Git fetch 失敗` 或 `Permission denied`
-
-**解決方案**:
-1. 確認伺服器上的 Git 儲存庫狀態
-2. 檢查部署路徑是否正確
-
-```bash
-# 在伺服器上手動檢查
-cd /path/to/deploy/directory
-git status
-git remote -v
-```
-
-##### ❌ Docker 權限問題
-
-**錯誤訊息**: `permission denied while trying to connect to the Docker daemon`
-
-**解決方案**:
-```bash
-# 在伺服器上執行
-sudo usermod -aG docker $USER
-# 重新登入生效
-```
-
-##### ❌ 服務啟動失敗
-
-**錯誤訊息**: `啟動服務失敗`
-
-**解決方案**:
-1. 檢查 `.env` 檔案內容
-2. 查看 Docker 服務狀態
-3. 檢查連接埠是否被占用
-
-```bash
-# 手動診斷
-./scripts/manage.sh check
-docker compose logs
-sudo ss -tulpn | grep 51820
-```
-
-</details>
-
-## 📚 進階主題與最佳實踐
-
-### 🔧 客戶端管理
-
-#### 新增客戶端
-
-```bash
-# 方法 1：編輯 docker-compose.yml（推薦）
+# Method 1: Edit docker-compose.yml (recommended)
 nano docker-compose.yml
-# 修改: - PEERS=laptop,phone,tablet,work_laptop
+# Modify: - PEERS=laptop,phone,tablet,work_laptop
 
-# 方法 2：使用環境變數
+# Method 2: Use environment variables
 echo "PEERS=laptop,phone,tablet,work_laptop" >> .env
 
-# 重新啟動服務
+# Restart service
 ./scripts/manage.sh restart
 
-# 獲取新客戶端設定
+# Get new client configuration
 ./scripts/manage.sh qr work_laptop
 ```
 
-#### 移除客戶端
+#### Remove Client
 
 ```bash
-# 從 PEERS 列表中移除客戶端名稱
+# Remove client name from PEERS list
 nano docker-compose.yml
 
-# 重新啟動服務（舊的設定檔會被自動清理）
+# Restart service (old config files will be automatically cleaned)
 ./scripts/manage.sh restart
 ```
 
-### 🔐 安全強化
+### 🔐 Security Hardening
 
-#### 變更預設連接埠
+#### Change Default Port
 
 ```yaml
 # docker-compose.yml
 environment:
-  - SERVERPORT=12345  # 變更為非標準連接埠
+  - SERVERPORT=12345  # Change to non-standard port
 ports:
-  - "12345:51820/udp"  # 對應修改對外連接埠
+  - "12345:51820/udp"  # Update external port mapping
 ```
 
-#### 啟用客戶端金鑰輪換
+#### Enable Client Key Rotation
 
 ```bash
-# 定期備份舊設定
+# Regular backup of old configuration
 ./scripts/manage.sh backup
 
-# 清除所有客戶端設定（將重新生成新金鑰）
+# Clear all client configurations (will regenerate new keys)
 rm -rf config/peer_*
 
-# 重新啟動服務
+# Restart service
 ./scripts/manage.sh restart
 ```
 
-#### 限制客戶端網路存取
+#### Restrict Client Network Access
 
 ```yaml
-# 僅允許存取內網資源（分割隧道）
+# Only allow access to internal network resources (split tunnel)
 - ALLOWEDIPS=192.168.1.0/24,10.13.13.0/24
 
-# 自訂 DNS 伺服器（使用內網 Pi-hole）
+# Custom DNS server (use internal Pi-hole)
 - PEERDNS=192.168.1.100
 ```
 
-### 📊 監控與日誌
+### 📊 Monitoring and Logging
 
-#### 設定日誌輪換
+#### Set up Log Rotation
 
 ```bash
-# 安裝 logrotate
+# Install logrotate
 sudo apt install logrotate
 
-# 建立 VPN 日誌輪換設定
+# Create VPN log rotation configuration
 sudo tee /etc/logrotate.d/qwv-vpn << EOF
-/home/ubuntu/QWV-QuickWireguardVpn/logs/*.log {
+/home/ubuntu/QWV/logs/*.log {
     weekly
     rotate 4
     compress
@@ -768,271 +702,273 @@ sudo tee /etc/logrotate.d/qwv-vpn << EOF
 EOF
 ```
 
-#### 設定監控告警
+#### Set up Monitoring Alerts
 
 ```bash
-# 建立簡單的健康檢查腳本
+# Create simple health check script
 cat > scripts/health_check.sh << 'EOF'
 #!/bin/bash
 if ! docker exec wireguard wg show | grep -q "peer:"; then
     echo "WARNING: No WireGuard peers connected"
-    # 可以在此處添加通知邏輯（如發送 email 或 Slack 訊息）
+    # Add notification logic here (email or Slack)
 fi
 EOF
 
 chmod +x scripts/health_check.sh
 
-# 設定 cron 定期檢查
+# Set up periodic cron check
 echo "*/15 * * * * /path/to/scripts/health_check.sh" | crontab -
 ```
 
-### 🌐 多地部署
+### 🌐 Multi-Region Deployment
 
-#### 地理分散式 VPN
+#### Geographically Distributed VPN
 
 ```bash
-# 為不同地區建立分支
+# Create branches for different regions
 git checkout -b asia-server
 git checkout -b europe-server
 
-# 各分支使用不同的 CF_SUBDOMAIN
+# Different CF_SUBDOMAIN for each branch
 # Asia: vpn-asia.yourdomain.com
 # Europe: vpn-eu.yourdomain.com
 ```
 
-### 🔄 備份與災難復原
+### 🔄 Backup and Disaster Recovery
 
-#### 自動化備份腳本
+#### Automated Backup Script
 
 ```bash
-# 建立自動備份腳本
+# Create automated backup script
 cat > scripts/auto_backup.sh << 'EOF'
 #!/bin/bash
 BACKUP_DIR="/path/to/backup/location"
 DATE=$(date +%Y%m%d_%H%M%S)
 
-# 建立備份
+# Create backup
 ./scripts/manage.sh backup
 
-# 同步到遠端
+# Sync to remote
 rsync -av backup/ user@backup-server:$BACKUP_DIR/
 
-# 清理本地舊備份（保留 7 天）
+# Clean local old backups (keep 7 days)
 find backup/ -name "*.tar.gz" -mtime +7 -delete
 EOF
 
-# 設定每日自動備份
+# Set up daily automated backup
 echo "0 2 * * * /path/to/scripts/auto_backup.sh" | crontab -
 ```
 
-#### 災難復原程序
+#### Disaster Recovery Procedure
 
 ```bash
-# 1. 在新伺服器上克隆專案
-git clone https://github.com/yourusername/QWV-QuickWireguardVpn.git
-cd QWV-QuickWireguardVpn
+# 1. Clone project on new server
+git clone https://github.com/rich7420/QWV.git
+cd QWV
 
-# 2. 執行初始設定
+# 2. Run initial setup
 ./scripts/setup.sh
 
-# 3. 還原備份的設定檔
+# 3. Restore backup configuration
 tar -xzf backup/wireguard_backup_YYYYMMDD_HHMMSS.tar.gz
 
-# 4. 設定環境變數
+# 4. Configure environment variables
 cp env.example .env
 nano .env
 
-# 5. 啟動服務
+# 5. Start services
 ./scripts/manage.sh start
 ```
 
-## 📈 效能最佳化
+## 📈 Performance Optimization
 
-### 調整 WireGuard 參數
+### Adjust WireGuard Parameters
 
 ```yaml
-# docker-compose.yml - 針對高流量環境的最佳化
+# docker-compose.yml - Optimization for high traffic environments
 environment:
   - ALLOWEDIPS=0.0.0.0/0, ::/0
-  - PERSISTENTKEEPALIVE_PEERS=25  # 保持連線穩定
-  - LOG_CONFS=false              # 關閉 QR code 日誌以節省資源
+  - PERSISTENTKEEPALIVE_PEERS=25  # Maintain connection stability
+  - LOG_CONFS=false              # Disable QR code logging to save resources
 ```
 
-### 系統調整
+### System Adjustments
 
 ```bash
-# 增加 UDP 緩衝區大小
+# Increase UDP buffer size
 echo 'net.core.rmem_max = 26214400' | sudo tee -a /etc/sysctl.conf
 echo 'net.core.rmem_default = 26214400' | sudo tee -a /etc/sysctl.conf
 sudo sysctl -p
 
-# 重啟服務以套用變更
+# Restart service to apply changes
 ./scripts/manage.sh restart
 ```
 
-## 🔧 開發與維護指南
+## 🔧 Development and Maintenance Guide
 
-### 專案結構說明
+### Project Structure Explanation
 
 ```
 QWV-QuickWireguardVpn/
-├── 📋 規劃書.md                 # 完整技術文檔（603行專業分析）
-├── 🔧 docker-compose.yml        # 服務編排（WireGuard + DDNS）
-├── ⚙️ env.example              # 環境變數範本（安全設定）
-├── 🔐 .gitignore               # Git 忽略規則（保護敏感資訊）
-├── 🤖 .github/workflows/       # CI/CD 自動化
-│   └── deploy.yml              # GitOps 部署流程
-├── 📂 scripts/                 # 管理工具集
-│   ├── setup.sh               # 環境初始化（一鍵安裝）
-│   └── manage.sh               # 服務管理（20+ 功能）
-├── 📁 config/                  # WireGuard 設定（自動生成）
-├── 💾 backup/                  # 備份檔案
-└── 📊 logs/                    # 系統日誌
+├── 📋 規劃書.md                 # Complete technical documentation (603 lines of professional analysis)
+├── 🔧 docker-compose.yml        # Service orchestration (WireGuard + DDNS)
+├── ⚙️ env.example              # Environment variable template (security configuration)
+├── 🔐 .gitignore               # Git ignore rules (protect sensitive information)
+├── 🤖 .github/workflows/       # CI/CD automation
+│   └── deploy.yml              # GitOps deployment workflow
+├── 📂 scripts/                 # Management toolkit
+│   ├── setup.sh               # Environment initialization (one-click install)
+│   ├── manage.sh               # Service management (20+ features)
+│   └── validate.sh             # Project validation (7 modules)
+├── 📁 config/                  # WireGuard configuration (auto-generated)
+├── 💾 backup/                  # Backup files
+└── 📊 logs/                    # System logs
 ```
 
-### 代碼貢獻流程
+### Code Contribution Workflow
 
-#### Fork 並設定開發環境
+#### Fork and Set up Development Environment
 
 ```bash
-# 1. Fork 此儲存庫到您的 GitHub 帳戶
+# 1. Fork this repository to your GitHub account
 
-# 2. 克隆您的 Fork
-git clone https://github.com/YOUR_USERNAME/QWV-QuickWireguardVpn.git
-cd QWV-QuickWireguardVpn
+# 2. Clone your fork
+git clone https://github.com/YOUR_USERNAME/QWV.git
+cd QWV
 
-# 3. 設定上游儲存庫
-git remote add upstream https://github.com/ORIGINAL_OWNER/QWV-QuickWireguardVpn.git
+# 3. Set up upstream repository
+git remote add upstream https://github.com/rich7420/QWV.git
 
-# 4. 建立功能分支
+# 4. Create feature branch
 git checkout -b feature/your-feature-name
 ```
 
-#### 開發規範
+#### Development Standards
 
-- ✅ 所有腳本必須通過 ShellCheck 檢查
-- ✅ Docker Compose 檔案應使用最新的語法版本
-- ✅ 新增功能需包含相應的文檔更新
-- ✅ 遵循既有的程式碼風格和命名慣例
+- ✅ All scripts must pass ShellCheck validation
+- ✅ Docker Compose files should use latest syntax version
+- ✅ New features need corresponding documentation updates
+- ✅ Follow existing code style and naming conventions
 
-#### 測試檢查清單
+#### Testing Checklist
 
 ```bash
-# 語法檢查
+# Syntax check
 shellcheck scripts/*.sh
 
-# 功能測試
+# Function testing
 ./scripts/setup.sh --dry-run
 ./scripts/manage.sh check
 
-# Docker 語法驗證
+# Docker syntax validation
 docker compose config
 ```
 
-#### 提交 Pull Request
+#### Submit Pull Request
 
 ```bash
-# 1. 確保程式碼是最新的
+# 1. Ensure code is up to date
 git fetch upstream
 git rebase upstream/main
 
-# 2. 提交變更
+# 2. Commit changes
 git add .
-git commit -m "feat: 新增 XXX 功能"
+git commit -m "feat: Add XXX feature"
 
-# 3. 推送到您的 Fork
+# 3. Push to your fork
 git push origin feature/your-feature-name
 
-# 4. 在 GitHub 上建立 Pull Request
+# 4. Create Pull Request on GitHub
 ```
 
-### 版本發布流程
+### Version Release Process
 
-#### 語義化版本控制
+#### Semantic Versioning
 
-我們使用 [語義化版本控制](https://semver.org/lang/zh-TW/)：
+We use [Semantic Versioning](https://semver.org/):
 
-- `MAJOR.MINOR.PATCH` (例如：`1.2.3`)
-- **MAJOR**：不相容的 API 變更
-- **MINOR**：向後相容的功能新增
-- **PATCH**：向後相容的問題修正
+- `MAJOR.MINOR.PATCH` (e.g., `1.2.3`)
+- **MAJOR**: Incompatible API changes
+- **MINOR**: Backward-compatible feature additions
+- **PATCH**: Backward-compatible bug fixes
 
-#### 發布步驟
+#### Release Steps
 
 ```bash
-# 1. 更新版本號
+# 1. Update version number
 echo "v1.2.3" > VERSION
 
-# 2. 更新 CHANGELOG
-# 記錄此版本的所有變更
+# 2. Update CHANGELOG
+# Record all changes for this version
 
-# 3. 建立發布標籤
+# 3. Create release tag
 git tag -a v1.2.3 -m "Release version 1.2.3"
 git push origin v1.2.3
 
-# 4. 在 GitHub 建立 Release
-# 包含變更摘要和升級指引
+# 4. Create Release on GitHub
+# Include change summary and upgrade instructions
 ```
 
-## 🆘 技術支援
+## 🆘 Technical Support
 
-### 社群支援
+### Community Support
 
-- 🐛 **Bug 回報**: [GitHub Issues](https://github.com/yourusername/QWV-QuickWireguardVpn/issues)
-- 💡 **功能建議**: [GitHub Discussions](https://github.com/yourusername/QWV-QuickWireguardVpn/discussions)
-- 📖 **文件問題**: 透過 Pull Request 直接修正
+- 🐛 **Bug Reports**: [GitHub Issues](https://github.com/rich7420/QWV/issues)
+- 💡 **Feature Requests**: [GitHub Discussions](https://github.com/rich7420/QWV/discussions)
+- 📖 **Documentation Issues**: Direct fixes via Pull Request
 
-### 專業服務
+### Professional Services
 
-如果您需要：
-- 🏢 企業級部署諮詢
-- 🔧 客製化功能開發
-- 🎓 WireGuard 技術培訓
-- 🛡️ 安全性評估
+If you need:
+- 🏢 Enterprise deployment consulting
+- 🔧 Custom feature development
+- 🎓 WireGuard technical training
+- 🛡️ Security assessment
 
-歡迎通過 GitHub Issues 聯繫我們，標註 `[Commercial]`。
+Contact us through GitHub Issues with `[Commercial]` tag.
 
-## 📄 授權條款
+## 📄 License
 
-本專案採用 **MIT 授權條款**。詳細條款請參考 [LICENSE](LICENSE) 檔案。
+This project is licensed under the **MIT License**. See [LICENSE](LICENSE) file for details.
 
-### 簡述
+### Summary
 
-- ✅ **商業使用**: 允許用於商業目的
-- ✅ **修改**: 允許修改程式碼
-- ✅ **分發**: 允許分發原始或修改後的程式碼
-- ✅ **私人使用**: 允許私人使用
-- ⚠️ **責任限制**: 不提供任何擔保，使用風險自負
+- ✅ **Commercial Use**: Allowed for commercial purposes
+- ✅ **Modification**: Allowed to modify code
+- ✅ **Distribution**: Allowed to distribute original or modified code
+- ✅ **Private Use**: Allowed for private use
+- ⚠️ **Liability Limitation**: No warranty provided, use at your own risk
 
-## 🤝 貢獻者
+## 🤝 Contributors
 
-感謝所有為此專案做出貢獻的開發者：
+Thanks to all developers who contributed to this project:
 
-<!-- 這裡會自動列出貢獻者 -->
+<!-- Contributors will be automatically listed here -->
 
-## 🌟 致謝
+## 🌟 Acknowledgments
 
-本專案的實現得益於以下優秀的開源專案：
+This project's implementation benefits from the following excellent open source projects:
 
-- [WireGuard](https://www.wireguard.com/) - 現代化的 VPN 協定
-- [LinuxServer.io](https://linuxserver.io/) - 優秀的 Docker 映像檔
-- [Docker](https://www.docker.com/) - 容器化平台
-- [Cloudflare](https://www.cloudflare.com/) - DNS 服務提供商
+- [WireGuard](https://www.wireguard.com/) - Modern VPN protocol
+- [LinuxServer.io](https://linuxserver.io/) - Excellent Docker images
+- [Docker](https://www.docker.com/) - Containerization platform
+- [Cloudflare](https://www.cloudflare.com/) - DNS service provider
 
-## 📖 延伸閱讀
+## 📖 Further Reading
 
-- 📋 **[規劃書.md](規劃書.md)** - 完整的技術分析和設計理念（603行專業文檔）
-- 🔗 **[WireGuard 官方文檔](https://www.wireguard.com/quickstart/)**
-- 🐳 **[Docker Compose 參考](https://docs.docker.com/compose/)**
-- 🌐 **[Cloudflare API 文檔](https://developers.cloudflare.com/api/)**
+- 📋 **[規劃書.md](規劃書.md)** - Complete technical analysis and design concepts (603 lines of professional documentation)
+- 🧪 **[TESTING.md](TESTING.md)** - Comprehensive testing guide and validation procedures
+- 🔗 **[WireGuard Official Documentation](https://www.wireguard.com/quickstart/)**
+- 🐳 **[Docker Compose Reference](https://docs.docker.com/compose/)**
+- 🌐 **[Cloudflare API Documentation](https://developers.cloudflare.com/api/)**
 
 ---
 
 <div align="center">
 
-**⭐ 如果這個專案對您有幫助，請給我們一個 Star！**
+**⭐ If this project helps you, please give us a Star!**
 
-**🔗 [GitHub Repository](https://github.com/yourusername/QWV-QuickWireguardVpn)**
+**🔗 [GitHub Repository](https://github.com/rich7420/QWV)**
 
 Made with ❤️ by the QWV Team
 

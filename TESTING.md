@@ -538,10 +538,129 @@ ls config/
 # 1. 推送專案到 GitHub（如果尚未完成）
 git remote add origin https://github.com/yourusername/QWV-QuickWireguardVpn.git
 git push -u origin main
+```
 
-# 2. 在 GitHub 中設定 Secrets
-# 前往：Settings → Secrets and variables → Actions
-# 添加必要的 Secrets：VPN_HOST, VPN_USER, VPN_SSH_KEY 等
+#### 10.1.1 配置 GitHub 加密環境變數 (Secrets)
+
+**必要步驟**：
+1. 前往您的 GitHub 專案頁面
+2. 點擊 **Settings** 選項卡
+3. 在左側選單中選擇 **Secrets and variables** → **Actions**
+4. 點擊 **New repository secret** 按鈕
+
+**必須配置的加密環境變數**：
+
+| Secret 名稱 | 說明 | 範例值 | 必要性 |
+|------------|------|--------|--------|
+| `VPN_HOST` | VPN 伺服器的 IP 地址或域名 | `203.0.113.1` 或 `vpn.yourdomain.com` | ✅ 必要 |
+| `VPN_USER` | 登入伺服器的用戶名 | `ubuntu` 或 `user` | ✅ 必要 |
+| `VPN_SSH_KEY` | SSH 私鑰內容（完整的私鑰文件） | `-----BEGIN OPENSSH PRIVATE KEY-----\n...` | ✅ 必要 |
+| `VPN_PORT` | SSH 連接埠（如果不是預設的 22） | `2222` 或 `22` | ⚪ 可選 |
+
+#### 10.1.2 SSH 私鑰準備步驟
+
+**在您的本機電腦上**：
+
+```bash
+# 1. 生成 SSH 金鑰對（如果尚未有）
+ssh-keygen -t ed25519 -C "github-actions@yourdomain.com" -f ~/.ssh/github_actions_key
+
+# 2. 複製私鑰內容（用於 GitHub Secret）
+cat ~/.ssh/github_actions_key
+# ⚠️ 複製完整輸出（包含 BEGIN 和 END 行）
+
+# 3. 複製公鑰到伺服器
+ssh-copy-id -i ~/.ssh/github_actions_key.pub user@your-server-ip
+
+# 或手動添加公鑰
+cat ~/.ssh/github_actions_key.pub
+# 將輸出複製到伺服器的 ~/.ssh/authorized_keys
+```
+
+**在 VPN 伺服器上驗證**：
+
+```bash
+# 測試新金鑰是否可以登入
+ssh -i ~/.ssh/github_actions_key user@your-server-ip
+
+# 確認公鑰已正確安裝
+cat ~/.ssh/authorized_keys | grep "github-actions"
+# 應該看到您剛才添加的公鑰
+```
+
+#### 10.1.3 設定 Secrets 的詳細步驟
+
+**VPN_HOST 設定**：
+```
+名稱: VPN_HOST
+值: 203.0.113.1
+（或您的伺服器域名，如 vpn.yourdomain.com）
+```
+
+**VPN_USER 設定**：
+```
+名稱: VPN_USER
+值: ubuntu
+（或您在伺服器上使用的用戶名）
+```
+
+**VPN_SSH_KEY 設定**：
+```
+名稱: VPN_SSH_KEY
+值: -----BEGIN OPENSSH PRIVATE KEY-----
+b3BlbnNzaC1rZXktdjEAAAAABG5vbmUAAAAEbm9uZQAAAAAAAAABAAAAMwAAAAtz
+c2gtZWQyNTUxOQAAACBQxXKp3gN+foooo3gN+foooo3gN+foooo3gN+foooo...
+（完整的私鑰內容，包含所有換行符號）
+-----END OPENSSH PRIVATE KEY-----
+```
+
+**VPN_PORT 設定**（如果 SSH 不是預設連接埠 22）：
+```
+名稱: VPN_PORT
+值: 2222
+（您的 SSH 連接埠號碼）
+```
+
+#### 10.1.4 安全性注意事項
+
+⚠️ **重要安全提醒**：
+
+1. **私鑰安全**：
+   - 絕對不要將私鑰提交到程式碼庫
+   - 使用專用的部署金鑰，不要使用個人 SSH 金鑰
+   - 定期輪換 SSH 金鑰
+
+2. **最小權限原則**：
+   ```bash
+   # 在伺服器上建立專用的部署用戶（建議）
+   sudo adduser github-deploy
+   sudo usermod -aG docker github-deploy
+   
+   # 設定 sudo 權限（僅允許必要的指令）
+   echo "github-deploy ALL=(ALL) NOPASSWD: /usr/bin/systemctl restart docker" | sudo tee /etc/sudoers.d/github-deploy
+   ```
+
+3. **金鑰權限設定**：
+   ```bash
+   # 在伺服器上確保正確的權限
+   chmod 700 ~/.ssh
+   chmod 600 ~/.ssh/authorized_keys
+   ```
+
+#### 10.1.5 驗證 Secrets 設定
+
+```bash
+# 本地測試 SSH 連線（使用與 GitHub Actions 相同的金鑰）
+ssh -i ~/.ssh/github_actions_key user@your-server-ip "docker --version"
+# 預期輸出：Docker version 24.0+
+
+# 測試 Docker 權限
+ssh -i ~/.ssh/github_actions_key user@your-server-ip "docker ps"
+# 預期輸出：容器列表（可能為空）
+
+# 測試專案路徑存取
+ssh -i ~/.ssh/github_actions_key user@your-server-ip "ls -la ~/QWV-QuickWireguardVpn/"
+# 預期輸出：專案檔案列表
 ```
 
 ### 10.2 測試自動部署工作流程
@@ -706,6 +825,12 @@ grep "Destination Host Unreachable" ping_test.log
 - [ ] DNS 解析：`[ ] 通過` `[ ] 失敗` 錯誤：`_________`
 
 ### GitHub Actions 測試
+- [ ] GitHub Secrets 配置：`[ ] 通過` `[ ] 失敗` 錯誤：`_________`
+  - [ ] VPN_HOST 設定：`[ ] 完成` 值：`_________`
+  - [ ] VPN_USER 設定：`[ ] 完成` 值：`_________`
+  - [ ] VPN_SSH_KEY 設定：`[ ] 完成` 格式：`[ ] 正確`
+  - [ ] VPN_PORT 設定：`[ ] 完成` `[ ] 使用預設` 值：`_________`
+- [ ] SSH 金鑰驗證：`[ ] 通過` `[ ] 失敗` 錯誤：`_________`
 - [ ] 工作流程觸發：`[ ] 通過` `[ ] 失敗` 錯誤：`_________`
 - [ ] SSH 連線測試：`[ ] 通過` `[ ] 失敗` 錯誤：`_________`
 - [ ] 自動部署：`[ ] 通過` `[ ] 失敗` 錯誤：`_________`
@@ -779,13 +904,65 @@ curl -X GET "https://api.cloudflare.com/client/v4/user/tokens/verify" \
 ```
 
 ### 問題 6：GitHub Actions 部署失敗
+
+#### 6.1 GitHub Secrets 配置問題
 ```bash
-# 檢查 SSH 連線
-ssh -T git@github.com
-# 檢查 Secrets 設定
+# 檢查 Secrets 是否正確設定
+# 常見錯誤和解決方案：
+
+# 錯誤 1：VPN_SSH_KEY 格式不正確
+# 症狀：SSH 連線失敗，顯示 "invalid format" 或 "bad permissions"
+# 解決：確保私鑰包含完整的 BEGIN 和 END 行
+cat ~/.ssh/github_actions_key | pbcopy  # macOS
+cat ~/.ssh/github_actions_key | xclip -selection clipboard  # Linux
+
+# 錯誤 2：VPN_HOST 無法連接
+# 症狀：連線超時或主機無法到達
+# 解決：確認伺服器 IP 或域名正確
+ping $VPN_HOST  # 本地測試連通性
+nslookup $VPN_HOST  # 如果使用域名
+
+# 錯誤 3：VPN_USER 權限不足
+# 症狀：SSH 連線成功但 Docker 指令失敗
+# 解決：確認用戶在 docker 群組中
+ssh user@host "groups \$USER | grep docker"
+
+# 錯誤 4：VPN_PORT 設定錯誤
+# 症狀：SSH 連線被拒絕
+# 解決：確認 SSH 連接埠設定
+ssh -p $VPN_PORT user@host "echo 'Connection successful'"
+```
+
+#### 6.2 SSH 金鑰問題診斷
+```bash
+# 本地測試 SSH 連線（模擬 GitHub Actions 環境）
+ssh -i ~/.ssh/github_actions_key -o StrictHostKeyChecking=no user@your-server-ip
+
+# 檢查伺服器端的 SSH 設定
+ssh user@host "cat ~/.ssh/authorized_keys | grep github-actions"
+
+# 檢查金鑰權限
+ssh user@host "ls -la ~/.ssh/"
+# 預期：drwx------ .ssh/ 和 -rw------- authorized_keys
+
+# 測試 Docker 權限
+ssh -i ~/.ssh/github_actions_key user@host "docker ps"
+# 預期：能夠執行 Docker 指令
+```
+
+#### 6.3 其他部署問題
+```bash
+# 檢查 GitHub Actions 狀態
 # 在 GitHub Actions 頁面檢查錯誤日誌
-# 本地測試部署腳本：
+
+# 本地測試部署腳本
 ./scripts/validate.sh
+
+# 檢查伺服器的防火牆狀態
+ssh user@host "sudo ufw status"
+
+# 檢查磁碟空間
+ssh user@host "df -h"
 ```
 
 ## ✅ 測試完成檢查
