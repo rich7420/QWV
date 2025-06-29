@@ -8,8 +8,10 @@ set -e  # 遇到錯誤時退出
 # 自動偵測裝置信息並生成客戶端名稱
 generate_auto_peer() {
     local format="${AUTO_PEER_FORMAT:-username-hostname}"
-    local username=$(whoami)
-    local hostname=$(hostname | cut -d'.' -f1)  # 只取第一部分，避免 FQDN
+    local username
+    local hostname
+    username=$(whoami)
+    hostname=$(hostname | cut -d'.' -f1)  # 只取第一部分，避免 FQDN
     
     case "$format" in
         "username")
@@ -38,6 +40,7 @@ process_peers_config() {
     # 載入環境變數
     if [ -f .env ]; then
         set -a  # 自動匯出所有變數
+        # shellcheck source=.env
         source .env
         set +a
     fi
@@ -343,7 +346,7 @@ show_web_qr() {
     temp_dir=$(mktemp -d)
     
     # 設定trap確保清理
-    trap "echo '🧹 清理臨時檔案...'; rm -rf '$temp_dir'; exit 0" INT TERM EXIT
+    trap 'echo "🧹 清理臨時檔案..."; rm -rf "$temp_dir"; exit 0' INT TERM EXIT
     
     cp "$qr_file" "$temp_dir/qr.png"
     

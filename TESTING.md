@@ -1,6 +1,14 @@
 # 🧪 QWV VPN 詳細測試步驟
 
-## ⚡ GitHub Actions 快速配置指引
+> **💡 專案理論（40字解釋）**：  
+> **容器化WireGuard VPN配合Cloudflare動態DNS，實現自動設備偵測、一鍵部署、設定即程式碼的現代化個人VPN解決方案**
+
+> **👥 角色分工說明**：
+> - **🔧 系統管理員**：負責伺服器部署、環境配置、安全檢查、QR Code生成
+> - **📱 VPN使用者**：獲取配置文件、設定客戶端、使用VPN服務
+> - **🌐 域名管理員**：設定Cloudflare DNS、API權杖管理（通常與系統管理員重疊）
+
+## ⚡ GitHub Actions 快速配置指引（🔧 系統管理員）
 
 ### 🎯 只想快速完成 GitHub Actions 配置？
 
@@ -1614,63 +1622,131 @@ dig vpn.yourdomain.com
 
 ## 📱 階段六：客戶端連接測試
 
-### 6.1 手機客戶端測試
+> **👥 角色分工**：
+> - **🔧 系統管理員**：生成和分享QR Code
+> - **📱 VPN使用者**：設定客戶端並測試連線
+
+### 🔧 6.1 系統管理員：生成QR Code（四種方法）
+
+#### 方法1️⃣：安全Web分享（推薦）
 
 ```bash
-# 生成手機客戶端 QR Code
+# 🌐 啟動安全Web QR Code服務
+./scripts/manage.sh web-qr phone 8080
+# 預期輸出：
+# 🌐 啟動安全Web QR Code分享服務...
+# 📱 QR Code網址: http://192.168.1.100:8080/?token=abc123def456
+# 🔒 安全提醒: 僅限內網存取，含隨機token驗證
+# ⚠️  按 Ctrl+C 停止服務
+
+# ✅ 測試網頁是否正常運作
+curl "http://192.168.1.100:8080/?token=abc123def456"
+# 應該返回包含QR Code的HTML頁面
+```
+
+#### 方法2️⃣：終端機顯示（改善版）
+
+```bash
+# 📱 生成改善的QR Code顯示
 ./scripts/manage.sh qr phone
-# 預期輸出：顯示 QR Code 檔案位置
-
-# 如果伺服器支援，直接顯示 QR Code
-cat config/peer_phone/peer_phone.conf | qrencode -t ansiutf8
+# 預期輸出：
+# 📱 客戶端 phone 的 QR Code:
+# 💡 獲取QR Code的方法：
+# 1. 📥 下載PNG圖片：
+#    scp user@192.168.1.100:~/QWV/config/peer_phone/peer_phone.png ~/qr-phone.png
+# 2. 📋 複製配置文件：
+#    scp user@192.168.1.100:~/QWV/config/peer_phone/peer_phone.conf ~/wireguard-phone.conf
+# 3. 📱 終端機QR Code：
+# [QR Code ASCII顯示]
 ```
 
-**手機設定步驟**：
-1. 下載 WireGuard 應用程式（Android/iOS）
-2. 點擊「+」→「從 QR code 建立」
-3. 掃描 QR Code
-4. 為隧道命名（例如：「Home VPN」）
-5. 點擊「建立隧道」
-
-### 6.2 桌面客戶端測試
+#### 方法3️⃣：安全性檢查
 
 ```bash
-# 查看筆電客戶端設定
-./scripts/manage.sh qr laptop
-# 記錄設定檔路徑
-
-# 將設定檔複製到本機（在本機執行）
-scp user@your-server:/path/to/config/peer_laptop/peer_laptop.conf ~/wireguard-home.conf
+# 🔐 執行全面安全檢查
+./scripts/manage.sh security
+# 預期輸出：
+# 🔒 QWV 安全性檢查
+# 📂 檔案權限檢查：✅ .env 檔案權限安全 (600)
+# 🔑 設定檔安全性：✅ Cloudflare API token 已設定
+# 🌐 網路安全性：✅ 無偵測到非必要的開放連接埠
+# 🐳 Docker配置檢查：✅ 容器安全配置正常
+# 💡 六大安全建議：[具體建議列表]
 ```
 
-**桌面設定步驟**：
-1. 下載 WireGuard 客戶端
-2. 「從檔案匯入隧道」
-3. 選擇下載的 .conf 檔案
+### 📱 6.2 VPN使用者：手機客戶端測試
 
-### 6.3 連接測試
+**設定步驟**：
+1. 📥 **下載WireGuard應用**（Android/iOS）
+2. 🌐 **獲取QR Code**：
+   - 從管理員獲取安全Web網址：`http://192.168.1.100:8080/?token=abc123def456`
+   - 在手機瀏覽器開啟網址
+   - 閱讀網頁上的安全提醒和設定說明
+3. 📱 **掃描QR Code**：
+   - 在WireGuard應用中點擊「+」→「從QR code建立」
+   - 掃描網頁上的QR Code
+4. ✅ **完成設定**：
+   - 為隧道命名（例如：「家用VPN」）
+   - 點擊「建立隧道」
+
+### 🖥️ 6.3 VPN使用者：桌面客戶端測試
+
+```bash
+# 📥 使用管理員提供的scp指令下載設定檔
+# （從 ./scripts/manage.sh qr laptop 的輸出中複製指令）
+scp user@192.168.1.100:~/QWV/config/peer_laptop/peer_laptop.conf ~/wireguard-home.conf
+```
+
+**設定步驟**：
+1. 🔧 **下載WireGuard客戶端**
+2. 📁 **匯入設定檔**：「從檔案匯入隧道」→ 選擇下載的.conf檔案  
+3. ✅ **測試連線**
+
+### 📱 6.4 VPN使用者：連接測試
 
 **在客戶端裝置上執行**：
 
 ```bash
-# 連接 VPN 前檢查 IP
+# 🔌 連接VPN前檢查原始IP
 curl https://ipinfo.io/ip
-# 記錄原始 IP
+# 記錄原始IP：例如 203.0.113.10
 
-# 啟動 VPN 連接
-# （在 WireGuard 應用中點擊開關）
+# 🟢 啟動VPN連接（在WireGuard應用中點擊開關）
 
-# 等待 10 秒後檢查新 IP
+# ⏱️ 等待10秒後檢查新IP
 curl https://ipinfo.io/ip
-# 應該顯示伺服器的公網 IP
+# ✅ 應該顯示伺服器的公網IP：例如 198.51.100.5
 
-# 測試 DNS 解析
+# 🌐 測試DNS解析
 nslookup google.com
-# 應該正常解析
+# ✅ 應該正常解析
 
-# 測試網路連通性
+# 📡 測試網路連通性
 ping -c 4 8.8.8.8
-# 應該正常回應
+# ✅ 應該正常回應，延遲增加但穩定
+
+# 🚀 測試網路速度
+curl -o /dev/null -s -w "%{speed_download}\n" https://speed.cloudflare.com/__down?bytes=10000000
+# 記錄下載速度，比較VPN連接前後差異
+```
+
+**🔧 系統管理員：伺服器端驗證**
+
+```bash
+# 📊 檢查客戶端連接狀態
+./scripts/manage.sh peers
+# ✅ 應該顯示已連接的客戶端清單和最後握手時間
+
+# 🔍 查看詳細連接資訊
+docker exec wireguard wg show all
+# 預期輸出範例：
+# interface: wg0
+#   listening port: 51820
+# peer: [客戶端公鑰]
+#   endpoint: [客戶端IP]:port
+#   allowed ips: 10.13.13.x/32
+#   latest handshake: X seconds ago
+#   transfer: X.XX KiB received, X.XX KiB sent
 ```
 
 ## 🔍 階段七：詳細功能驗證

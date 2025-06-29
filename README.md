@@ -9,6 +9,9 @@
 
 ## 📋 Project Overview
 
+> **💡 Project Theory (40-word summary)**:  
+> **Containerized WireGuard VPN with Cloudflare Dynamic DNS, enabling automatic device detection, one-click deployment, and configuration-as-code for modern personal VPN solutions**
+
 QWV is a complete enterprise-grade WireGuard VPN solution that adopts modern DevOps best practices:
 
 - **🔒 Modern Security**: Uses WireGuard protocol, providing 3.2x faster performance than OpenVPN with a smaller attack surface
@@ -25,7 +28,7 @@ QWV is a complete enterprise-grade WireGuard VPN solution that adopts modern Dev
 
 ```
 QWV-QuickWireguardVpn/
-├── 📋 規劃書.md                 # Complete technical documentation and design concepts
+├── 📋 specification.md          # Complete technical documentation and design concepts
 ├── 🔧 docker-compose.yml        # Service orchestration configuration
 ├── ⚙️ env.example              # Environment variable template
 ├── 📝 README.md                # Project documentation
@@ -304,56 +307,122 @@ To only route internal network traffic through VPN:
 
 ## 📱 Client Configuration and Connection
 
-### 1. Mobile Client Setup (Android/iOS)
+> **👥 Role Description**：
+> - **🔧 System Administrator**：Responsible for server deployment and QR Code generation
+> - **📱 VPN User**：Obtain configuration and connect to VPN
 
-#### Install WireGuard App
+### 🔧 System Administrator: Generate Client Configuration
 
+#### Step 1: Configure Client Names (Auto-Detection)
+
+```bash
+# 🤖 Use auto-detection feature (recommended)
+./scripts/manage.sh setup
+# Output: ✅ Configured clients: john-laptop,work_tablet
+# 🤖 Auto-detected device: john-laptop
+```
+
+#### Step 2: Generate QR Code (Four Methods)
+
+**Method 1️⃣: Secure Web Sharing (Recommended for mobile users)**
+```bash
+# Start secure Web QR Code service
+./scripts/manage.sh web-qr john-laptop 8080
+
+# Output:
+# 🌐 Starting secure Web QR Code sharing service...
+# 📱 QR Code URL: http://192.168.1.100:8080/?token=abc123def456
+# 🔒 Security reminder: Internal network access only, with random token verification
+# ⚠️  Press Ctrl+C to stop service
+```
+
+**Method 2️⃣: Terminal Display**
+```bash
+# SSH to server and display QR Code
+./scripts/manage.sh qr john-laptop
+
+# Will display:
+# 📱 Client john-laptop QR Code:
+# 💡 How to get QR Code:
+# 1. 📥 Download PNG image:
+#    scp user@192.168.1.100:~/QWV/config/peer_john-laptop/peer_john-laptop.png ~/qr-john-laptop.png
+# 2. 📋 Copy configuration file:
+#    scp user@192.168.1.100:~/QWV/config/peer_john-laptop/peer_john-laptop.conf ~/wireguard-john-laptop.conf
+# 3. 📱 Terminal QR Code:
+# [ASCII QR Code display]
+```
+
+**Method 3️⃣: Download Configuration File**
+```bash
+# Generate download command
+./scripts/manage.sh qr john-laptop
+# Execute the displayed scp command to download files
+```
+
+**Method 4️⃣: Security Check**
+```bash
+# Check project security settings
+./scripts/manage.sh security
+
+# Output security assessment report:
+# 🔒 QWV Security Check
+# 📂 File permissions check: ✅ .env file permissions secure (600)
+# 🔑 Configuration security: ✅ Cloudflare API token configured
+# 🌐 Network security: ✅ No unnecessary open ports detected
+```
+
+---
+
+### 📱 VPN User: Setup and Connection
+
+#### 1. Mobile Client Setup (Android/iOS)
+
+**Download WireGuard App**
 - **Android**: [Google Play Store](https://play.google.com/store/apps/details?id=com.wireguard.android)
 - **iOS**: [App Store](https://apps.apple.com/app/wireguard/id1441195209)
 
-#### Setup Steps
-
+**Connection Steps**
 ```bash
-# 1. 🤖 If using auto-detection, first check detected client names
-./scripts/manage.sh setup
-# Output: ✅ Configured clients: john-laptop,shared_tablet
+# 1. 📱 Get secure web URL from administrator
+# Example: http://192.168.1.100:8080/?token=abc123def456
 
-# 2. Display client QR Code
-./scripts/manage.sh qr john-laptop  # Auto-detected client
-# OR for traditional naming:
-./scripts/manage.sh qr phone
+# 2. Open URL in mobile browser
+#    - You will see QR Code and setup instructions
+#    - Web page will show security reminders
 
-# 3. In mobile app:
+# 3. In WireGuard app:
 #    - Tap "+" → "Create from QR code"
-#    - Scan the QR code displayed in terminal
-#    - Name the tunnel (e.g., "Home VPN - john-laptop")
-#    - Tap "Create tunnel"
+#    - Scan QR Code from web page
+#    - Name the tunnel (e.g., "Home VPN")
+#    - Tap "Create Tunnel"
+
+# 4. 🔌 Test connection
+#    - Enable the tunnel in the app
+#    - Visit https://ipinfo.io in browser to check if IP has changed
 ```
 
-### 2. Desktop Client Setup
+#### 2. Desktop Client Setup
 
-#### Download WireGuard Client
-
+**Download WireGuard Client**
 - **Windows**: [Official Download](https://download.wireguard.com/windows-client/wireguard-installer.exe)
 - **macOS**: [App Store](https://apps.apple.com/app/wireguard/id1451685025) or `brew install wireguard-tools`
-- **Linux**: `sudo apt install wireguard` or install via package manager
+- **Linux**: `sudo apt install wireguard`
 
-#### Setup Steps
-
+**Setup Steps**
 ```bash
-# 1. 🤖 Check auto-detected client names and get configuration file
-./scripts/manage.sh setup
-./scripts/manage.sh qr john-laptop  # Auto-detected client
-# OR for traditional naming:
-./scripts/manage.sh qr laptop
+# 1. 📥 Get configuration file from administrator
+# Use the scp command provided by administrator:
+scp user@server-ip:~/QWV/config/peer_john-laptop/peer_john-laptop.conf ~/wireguard-home.conf
 
-# 2. Copy config file to local machine
-# For auto-detected client:
-scp user@server:~/QWV/config/peer_john-laptop/peer_john-laptop.conf ~/wireguard-home.conf
-# OR for traditional naming:
-scp user@server:~/QWV/config/peer_laptop/peer_laptop.conf ~/wireguard-home.conf
+# 2. 🔧 Import to WireGuard client
+#    - Open WireGuard application
+#    - Click "Add Tunnel" → "Add from file"
+#    - Select the downloaded .conf file
 
-# 3. Import config file in WireGuard client
+# 3. 🔌 Test connection
+curl https://ipinfo.io/ip  # Check IP before connection
+# Enable tunnel
+curl https://ipinfo.io/ip  # Check IP after connection (should show server IP)
 ```
 
 ### 3. Add New Client
@@ -394,6 +463,8 @@ WIREGUARD_PEERS=laptop,phone,tablet,work_computer
 
 ## 🛠️ Service Management Commands
 
+> **👥 Role Description**: The following commands are primarily for **🔧 System Administrators**
+
 ### Basic Operations
 
 ```bash
@@ -413,6 +484,31 @@ WIREGUARD_PEERS=laptop,phone,tablet,work_computer
 ./scripts/manage.sh status
 ```
 
+### 🔒 Security and Client Management
+
+```bash
+# 🔐 Comprehensive security check (NEW)
+./scripts/manage.sh security
+# Check items:
+# - 📂 File permissions check (.env, config directory)
+# - 🔑 Configuration security verification
+# - 🌐 Network port security scan
+# - 🐳 Docker security configuration check
+# - 💡 Six security recommendations
+
+# 📱 Display QR code (enhanced)
+./scripts/manage.sh qr <client_name>
+# Shows multiple access methods and cross-platform compatible scp commands
+
+# 🌐 Secure Web QR code sharing (NEW)
+./scripts/manage.sh web-qr <client_name> [port]
+# Features:
+# - 🔒 Random token verification
+# - 🖥️ Beautiful web interface
+# - ⚠️ Security reminders and usage instructions
+# - 🧹 Automatic temporary file cleanup
+```
+
 ### Monitoring and Debugging
 
 ```bash
@@ -427,9 +523,6 @@ WIREGUARD_PEERS=laptop,phone,tablet,work_computer
 
 # Run complete project validation
 ./scripts/manage.sh validate
-
-# Display QR code for specific client
-./scripts/manage.sh qr <client_name>
 ```
 
 ### Maintenance Operations
@@ -465,18 +558,44 @@ docker exec wireguard ip addr show wg0
 
 ## 🔍 Troubleshooting Guide
 
-### Diagnostic Tools
+> **👥 Role Description**：
+> - **🔧 System Administrator**：Use diagnostic tools and fix issues
+> - **📱 VPN User**：Report issues and perform basic checks
+
+### 🔧 System Administrator: Diagnostic Tools
 
 ```bash
-# One-click system check
+# 🔐 New: Comprehensive security check
+./scripts/manage.sh security
+# Check items: file permissions, configuration security, network security, Docker configuration
+
+# 📊 One-click system check
 ./scripts/manage.sh check
 
-# View detailed logs
+# 🚨 View error logs
 ./scripts/manage.sh logs | grep -i error
 
-# Check network connectivity
+# 🌐 Network connectivity check
 ping vpn.yourdomain.com
 nslookup vpn.yourdomain.com
+
+# 📱 Test QR Code generation
+./scripts/manage.sh qr test-client
+./scripts/manage.sh web-qr test-client 8080  # New: Web service test
+```
+
+### 📱 VPN User: Basic Checks
+
+```bash
+# 🔌 Check IP change
+curl https://ipinfo.io/ip  # Compare before and after connection
+
+# 🧪 DNS resolution test
+ping 8.8.8.8        # If successful, IP routing works
+ping google.com     # If fails, DNS issue
+
+# 📊 Network speed test
+curl -o /dev/null -s -w "%{speed_download}\n" https://speed.cloudflare.com/__down?bytes=10000000
 ```
 
 ### Common Issues and Solutions
@@ -1034,7 +1153,7 @@ sudo sysctl -p
 
 ```
 QWV-QuickWireguardVpn/
-├── 📋 規劃書.md                 # Complete technical documentation (603 lines of professional analysis)
+├── 📋 specification.md          # Complete technical documentation (603 lines of professional analysis)
 ├── 🔧 docker-compose.yml        # Service orchestration (WireGuard + DDNS)
 ├── ⚙️ env.example              # Environment variable template (security configuration)
 ├── 🔐 .gitignore               # Git ignore rules (protect sensitive information)
@@ -1180,7 +1299,7 @@ This project's implementation benefits from the following excellent open source 
 
 ## 📖 Further Reading
 
-- 📋 **[規劃書.md](規劃書.md)** - Complete technical analysis and design concepts (603 lines of professional documentation)
+- 📋 **[specification.md](specification.md)** - Complete technical analysis and design concepts (603 lines of professional documentation)
 - 🧪 **[TESTING.md](TESTING.md)** - Comprehensive testing guide and validation procedures
 - 🔗 **[WireGuard Official Documentation](https://www.wireguard.com/quickstart/)**
 - 🐳 **[Docker Compose Reference](https://docs.docker.com/compose/)**
