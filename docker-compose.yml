@@ -23,7 +23,7 @@ services:
       - SERVERPORT=51820                      # VPN 監聽連接埠
       
       # 客戶端設定（用逗號分隔）
-      - PEERS=laptop,phone
+      - PEERS=${WIREGUARD_PEERS:-laptop,phone}
       
       # DNS 設定（auto 使用 Docker 主機 DNS）
       - PEERDNS=auto

@@ -1,8 +1,114 @@
 #!/bin/bash
 
-# QWV VPN 服務管理腳本
+# QWV - QuickWireguardVpn 管理腳本
+# 提供 VPN 服務的啟動、停止、狀態檢查等功能
 
-set -e
+set -e  # 遇到錯誤時退出
+
+# 自動偵測裝置信息並生成客戶端名稱
+generate_auto_peer() {
+    local format="${AUTO_PEER_FORMAT:-username-hostname}"
+    local username=$(whoami)
+    local hostname=$(hostname | cut -d'.' -f1)  # 只取第一部分，避免 FQDN
+    
+    case "$format" in
+        "username")
+            echo "$username"
+            ;;
+        "hostname")
+            echo "$hostname"
+            ;;
+        "username-hostname")
+            echo "${username}-${hostname}"
+            ;;
+        "hostname-username")
+            echo "${hostname}-${username}"
+            ;;
+        *)
+            echo "${username}-${hostname}"  # 預設格式
+            ;;
+    esac
+}
+
+# 處理 PEERS 配置，支援自動偵測
+process_peers_config() {
+    local peers_config="${WIREGUARD_PEERS:-auto}"
+    local processed_peers=""
+    
+    # 載入環境變數
+    if [ -f .env ]; then
+        set -a  # 自動匯出所有變數
+        source .env
+        set +a
+    fi
+    
+    # 分割逗號分隔的 peers
+    IFS=',' read -ra PEER_ARRAY <<< "$peers_config"
+    
+    for peer in "${PEER_ARRAY[@]}"; do
+        # 移除前後空格
+        peer=$(echo "$peer" | xargs)
+        
+        if [ "$peer" = "auto" ]; then
+            # 自動偵測當前裝置
+            auto_peer=$(generate_auto_peer)
+            if [ -n "$processed_peers" ]; then
+                processed_peers="${processed_peers},${auto_peer}"
+            else
+                processed_peers="$auto_peer"
+            fi
+        else
+            # 手動指定的名稱
+            if [ -n "$processed_peers" ]; then
+                processed_peers="${processed_peers},${peer}"
+            else
+                processed_peers="$peer"
+            fi
+        fi
+    done
+    
+    echo "$processed_peers"
+}
+
+# 設定環境變數，包含自動偵測的 PEERS
+setup_environment() {
+    echo "🔧 設定環境變數..."
+    
+    # 檢查 .env 檔案
+    if [ ! -f .env ]; then
+        echo "❌ .env 檔案不存在，請先複製 env.example 並設定"
+        echo "   cp env.example .env"
+        echo "   nano .env"
+        return 1
+    fi
+    
+    # 處理 PEERS 配置
+    processed_peers=$(process_peers_config)
+    
+    # 更新 .env 檔案中的 WIREGUARD_PEERS
+    if [ -n "$processed_peers" ]; then
+        # 備份原始 .env
+        cp .env .env.backup
+        
+        # 更新或添加 WIREGUARD_PEERS
+        if grep -q "^WIREGUARD_PEERS=" .env; then
+            sed -i "s/^WIREGUARD_PEERS=.*/WIREGUARD_PEERS=$processed_peers/" .env
+        else
+            echo "WIREGUARD_PEERS=$processed_peers" >> .env
+        fi
+        
+        echo "✅ 已設定客戶端: $processed_peers"
+        
+        # 如果包含自動偵測，顯示偵測結果
+        if echo "$WIREGUARD_PEERS" | grep -q "auto"; then
+            auto_peer=$(generate_auto_peer)
+            echo "🤖 自動偵測裝置: $auto_peer"
+            echo "   - 使用者: $(whoami)"
+            echo "   - 主機名: $(hostname | cut -d'.' -f1)"
+            echo "   - 格式: ${AUTO_PEER_FORMAT:-username-hostname}"
+        fi
+    fi
+}
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
@@ -10,11 +116,12 @@ PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
 cd "$PROJECT_DIR"
 
 usage() {
-    echo "QWV VPN 服務管理工具"
+    echo "🚀 QWV VPN 服務管理工具"
     echo ""
     echo "使用方法: $0 <command>"
     echo ""
     echo "可用指令:"
+    echo "  setup        設定環境變數（支援自動偵測裝置名稱）"
     echo "  start        啟動 VPN 服務"
     echo "  stop         停止 VPN 服務"
     echo "  restart      重啟 VPN 服務"
@@ -26,6 +133,16 @@ usage() {
     echo "  qr <peer>    顯示客戶端 QR Code"
     echo "  check        檢查系統狀態"
     echo "  validate     執行專案完整驗證"
+    echo ""
+    echo "🤖 自動偵測功能:"
+    echo "  在 .env 中設定 WIREGUARD_PEERS=auto 可自動偵測當前裝置"
+    echo "  支援格式: username, hostname, username-hostname, hostname-username"
+    echo "  混合模式: WIREGUARD_PEERS=auto,work_laptop,family_tablet"
+    echo ""
+    echo "範例:"
+    echo "  $0 setup           # 設定環境變數並自動偵測裝置"
+    echo "  $0 start           # 啟動 VPN 服務"
+    echo "  $0 qr john-laptop  # 顯示自動偵測的客戶端 QR Code"
     echo ""
 }
 
@@ -110,7 +227,18 @@ show_peers() {
         echo ""
         echo "📋 可用的客戶端設定:"
         if [ -d "config" ]; then
-            ls config/ | grep "peer_" | sed 's/peer_/  - /' || echo "  (無)"
+            # 使用 glob 模式替代 ls | grep
+            peer_found=false
+            for dir in config/peer_*; do
+                if [ -d "$dir" ]; then
+                    peer_name=$(basename "$dir" | sed 's/peer_//')
+                    echo "  - $peer_name"
+                    peer_found=true
+                fi
+            done
+            if [ "$peer_found" = false ]; then
+                echo "  (無)"
+            fi
         else
             echo "  (config 目錄不存在)"
         fi
@@ -148,12 +276,18 @@ show_qr() {
         echo "檔案位置: $qr_file"
         # 如果系統支援，可以直接顯示 QR code
         if command -v qrencode >/dev/null 2>&1; then
-            cat "config/peer_${peer_name}/peer_${peer_name}.conf" | qrencode -t ansiutf8
+            qrencode -t ansiutf8 < "config/peer_${peer_name}/peer_${peer_name}.conf"
         fi
     else
         echo "❌ 找不到客戶端 ${peer_name} 的 QR Code"
         echo "可用的客戶端:"
-        ls config/ | grep "peer_" | sed 's/peer_/  - /'
+        # 使用 glob 模式替代 ls | grep
+        for dir in config/peer_*; do
+            if [ -d "$dir" ]; then
+                peer_name_available=$(basename "$dir" | sed 's/peer_//')
+                echo "  - $peer_name_available"
+            fi
+        done
     fi
 }
 
@@ -267,13 +401,18 @@ check_system() {
 }
 
 case "${1:-}" in
+    setup)
+        setup_environment
+        ;;
     start)
+        setup_environment  # 自動設定環境變數
         start_services
         ;;
     stop)
         stop_services
         ;;
     restart)
+        setup_environment  # 自動設定環境變數
         restart_services
         ;;
     status)

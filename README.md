@@ -202,10 +202,56 @@ CF_API_TOKEN=your_cloudflare_api_token_here
 CF_ZONE=yourdomain.com
 CF_SUBDOMAIN=vpn
 
+# 🤖 WireGuard Client Configuration (Three Modes Available)
+# Mode 1: Auto-detection (Recommended) - Automatically detects current user and device
+WIREGUARD_PEERS=auto
+AUTO_PEER_FORMAT=username-hostname  # Options: username, hostname, username-hostname, hostname-username
+
+# Mode 2: Manual specification - Traditional comma-separated client names
+# WIREGUARD_PEERS=laptop,phone,tablet
+
+# Mode 3: Hybrid mode - Combines auto-detection with manual specification
+# WIREGUARD_PEERS=auto,work_laptop,family_tablet
+
 # Optional settings (for advanced users)
 # WIREGUARD_PORT=51820
-# WIREGUARD_PEERS=laptop,phone,tablet
 # INTERNAL_SUBNET=10.13.13.0
+```
+
+#### 🤖 Auto-Detection Feature
+
+**Benefits of Auto-Detection:**
+- ✅ **Automatic**: No need to manually think of client names
+- ✅ **Personalized**: Each user gets unique device names (e.g., `john-laptop`, `mary-desktop`)
+- ✅ **Flexible**: Supports hybrid mode combining auto-detection with manual naming
+- ✅ **Collision-free**: Avoids duplicate or conflicting names
+
+**Format Options:**
+
+| Format | Description | Example Result |
+|--------|-------------|----------------|
+| `username` | User name only | `john` |
+| `hostname` | Host name only | `laptop` |
+| `username-hostname` | User-hostname (default) | `john-laptop` |
+| `hostname-username` | Hostname-user | `laptop-john` |
+
+**Setup with Auto-Detection:**
+
+```bash
+# Use the new setup command to handle auto-detection
+./scripts/manage.sh setup
+
+# Expected output:
+# 🔧 Setting up environment variables...
+# ✅ Configured clients: john-laptop,work_tablet
+# 🤖 Auto-detected device: john-laptop
+#    - User: john
+#    - Hostname: laptop
+#    - Format: username-hostname
+
+# Check the generated configuration
+cat .env | grep WIREGUARD_PEERS
+# Output: WIREGUARD_PEERS=john-laptop,work_tablet
 ```
 
 ### 3. Router Configuration
@@ -268,13 +314,19 @@ To only route internal network traffic through VPN:
 #### Setup Steps
 
 ```bash
-# 1. Display client QR Code
+# 1. 🤖 If using auto-detection, first check detected client names
+./scripts/manage.sh setup
+# Output: ✅ Configured clients: john-laptop,shared_tablet
+
+# 2. Display client QR Code
+./scripts/manage.sh qr john-laptop  # Auto-detected client
+# OR for traditional naming:
 ./scripts/manage.sh qr phone
 
-# 2. In mobile app:
+# 3. In mobile app:
 #    - Tap "+" → "Create from QR code"
 #    - Scan the QR code displayed in terminal
-#    - Name the tunnel (e.g., "Home VPN")
+#    - Name the tunnel (e.g., "Home VPN - john-laptop")
 #    - Tap "Create tunnel"
 ```
 
@@ -289,23 +341,49 @@ To only route internal network traffic through VPN:
 #### Setup Steps
 
 ```bash
-# 1. Get configuration file
-./scripts/manage.sh qr laptop  # View config file location
+# 1. 🤖 Check auto-detected client names and get configuration file
+./scripts/manage.sh setup
+./scripts/manage.sh qr john-laptop  # Auto-detected client
+# OR for traditional naming:
+./scripts/manage.sh qr laptop
 
 # 2. Copy config file to local machine
-scp user@server:/path/to/config/peer_laptop/peer_laptop.conf ~/wireguard.conf
+# For auto-detected client:
+scp user@server:~/QWV/config/peer_john-laptop/peer_john-laptop.conf ~/wireguard-home.conf
+# OR for traditional naming:
+scp user@server:~/QWV/config/peer_laptop/peer_laptop.conf ~/wireguard-home.conf
 
 # 3. Import config file in WireGuard client
 ```
 
 ### 3. Add New Client
 
-```bash
-# 1. Edit docker-compose.yml
-nano docker-compose.yml
+#### 🤖 Method 1: Using Auto-Detection (Recommended)
 
-# 2. Modify PEERS environment variable
-- PEERS=laptop,phone,tablet,work_computer
+```bash
+# 1. Edit .env file to add new manual clients to auto-detection
+nano .env
+
+# 2. Modify WIREGUARD_PEERS using hybrid mode
+WIREGUARD_PEERS=auto,work_computer,family_tablet
+
+# 3. Setup environment and restart service
+./scripts/manage.sh setup
+./scripts/manage.sh restart
+
+# 4. Get QR code for new client
+./scripts/manage.sh qr work_computer
+./scripts/manage.sh qr john-laptop  # Auto-detected client name
+```
+
+#### 📝 Method 2: Traditional Manual Mode
+
+```bash
+# 1. Edit .env file
+nano .env
+
+# 2. Modify WIREGUARD_PEERS with manual specification
+WIREGUARD_PEERS=laptop,phone,tablet,work_computer
 
 # 3. Restart service
 ./scripts/manage.sh restart
@@ -319,6 +397,9 @@ nano docker-compose.yml
 ### Basic Operations
 
 ```bash
+# 🤖 Setup environment variables with auto-detection
+./scripts/manage.sh setup
+
 # Start all services
 ./scripts/manage.sh start
 

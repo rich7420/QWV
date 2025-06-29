@@ -652,7 +652,44 @@ cp env.example .env
 cat env.example
 ```
 
-#### **4.2 填寫 .env 配置值**
+#### **4.2 🤖 自動偵測裝置名稱功能**
+
+**QWV 現在支援三種客戶端配置模式**：
+
+**模式 1：自動偵測（推薦新功能）**
+```bash
+# 在 .env 文件中設定
+WIREGUARD_PEERS=auto
+AUTO_PEER_FORMAT=username-hostname  # 可選，預設值
+
+# 這將自動偵測：
+# - 使用者名稱：$(whoami) 
+# - 主機名稱：$(hostname)
+# - 組合格式：john-laptop、mary-desktop 等
+```
+
+**模式 2：手動指定**
+```bash
+# 傳統方式，手動列出所有客戶端
+WIREGUARD_PEERS=laptop,phone,tablet
+```
+
+**模式 3：混合模式**
+```bash
+# 結合自動偵測和手動指定
+WIREGUARD_PEERS=auto,work_laptop,family_tablet,guest_phone
+```
+
+**🔧 自動偵測格式選項**：
+
+| 格式 | 說明 | 範例結果 |
+|------|------|----------|
+| `username` | 僅使用使用者名稱 | `john` |
+| `hostname` | 僅使用主機名稱 | `laptop` |
+| `username-hostname` | 使用者-主機名（預設） | `john-laptop` |
+| `hostname-username` | 主機名-使用者 | `laptop-john` |
+
+#### **4.3 填寫 .env 配置值**
 
 **編輯 .env 文件**：
 ```bash
@@ -664,15 +701,43 @@ vim .env
 code .env
 ```
 
-**單環境 .env 配置範例**：
+**單環境 .env 配置範例（使用自動偵測）**：
 ```bash
 # Cloudflare DDNS 配置
 CF_API_TOKEN=cf_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
 CF_ZONE=917420.xyz
 CF_SUBDOMAIN=vpn
 
-# WireGuard 配置
-PEERS=laptop,phone,tablet
+# WireGuard 配置 - 使用自動偵測
+WIREGUARD_PEERS=auto
+AUTO_PEER_FORMAT=username-hostname
+
+# WireGuard 伺服器配置
+SERVERURL=vpn.917420.xyz
+SERVERPORT=51820
+INTERNAL_SUBNET=10.13.13.0
+
+# 安全配置
+PUID=1000
+PGID=1000
+TZ=Asia/Taipei
+
+# 可選配置
+ALLOWEDIPS=0.0.0.0/0
+LOG_CONFS=true
+```
+
+**單環境 .env 配置範例（傳統手動方式）**：
+```bash
+# Cloudflare DDNS 配置
+CF_API_TOKEN=cf_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+CF_ZONE=917420.xyz
+CF_SUBDOMAIN=vpn
+
+# WireGuard 配置 - 手動指定
+WIREGUARD_PEERS=laptop,phone,tablet
+
+# WireGuard 伺服器配置
 SERVERURL=vpn.917420.xyz
 SERVERPORT=51820
 INTERNAL_SUBNET=10.13.13.0
@@ -695,7 +760,10 @@ CF_API_TOKEN=cf_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
 CF_ZONE=917420.xyz
 CF_SUBDOMAIN=vpn-asia
 
-PEERS=laptop,phone,tablet
+# 自動偵測 + 額外客戶端
+WIREGUARD_PEERS=auto,shared_tablet
+AUTO_PEER_FORMAT=username-hostname
+
 SERVERURL=vpn-asia.917420.xyz
 SERVERPORT=51820
 INTERNAL_SUBNET=10.13.13.0
@@ -713,7 +781,9 @@ CF_API_TOKEN=cf_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
 CF_ZONE=917420.xyz  
 CF_SUBDOMAIN=vpn-us
 
-PEERS=laptop,phone,tablet
+WIREGUARD_PEERS=auto,work_laptop
+AUTO_PEER_FORMAT=hostname-username
+
 SERVERURL=vpn-us.917420.xyz
 SERVERPORT=51820
 INTERNAL_SUBNET=10.14.14.0  # 不同子網避免衝突
@@ -731,7 +801,9 @@ CF_API_TOKEN=cf_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
 CF_ZONE=917420.xyz
 CF_SUBDOMAIN=vpn-eu
 
-PEERS=laptop,phone,tablet  
+WIREGUARD_PEERS=auto,family_devices
+AUTO_PEER_FORMAT=username-hostname
+
 SERVERURL=vpn-eu.917420.xyz
 SERVERPORT=51820
 INTERNAL_SUBNET=10.15.15.0  # 不同子網避免衝突
@@ -743,7 +815,26 @@ ALLOWEDIPS=0.0.0.0/0
 LOG_CONFS=true
 ```
 
-#### **4.3 驗證 .env 配置**
+#### **4.4 🔧 使用自動環境設定功能**
+
+```bash
+# 使用新的 setup 指令來處理自動偵測
+./scripts/manage.sh setup
+
+# 預期輸出：
+# 🔧 設定環境變數...
+# ✅ 已設定客戶端: john-laptop,work_tablet
+# 🤖 自動偵測裝置: john-laptop
+#    - 使用者: john
+#    - 主機名: laptop
+#    - 格式: username-hostname
+
+# 檢查生成的配置
+cat .env | grep WIREGUARD_PEERS
+# 輸出：WIREGUARD_PEERS=john-laptop,work_tablet
+```
+
+#### **4.5 驗證 .env 配置**
 
 ```bash
 # 檢查 .env 文件語法
@@ -755,12 +846,19 @@ echo "CF_API_TOKEN: ${CF_API_TOKEN:0:10}..."  # 只顯示前 10 字符
 echo "CF_ZONE: $CF_ZONE"
 echo "CF_SUBDOMAIN: $CF_SUBDOMAIN"
 echo "SERVERURL: $SERVERURL"
+echo "WIREGUARD_PEERS: $WIREGUARD_PEERS"
 
 # 測試 Docker Compose 配置
 docker compose config
+
+# 測試自動偵測功能
+echo "🤖 當前自動偵測結果："
+echo "使用者: $(whoami)"
+echo "主機名: $(hostname | cut -d'.' -f1)"
+echo "格式: ${AUTO_PEER_FORMAT:-username-hostname}"
 ```
 
-#### **4.4 環境變數安全檢查**
+#### **4.6 環境變數安全檢查**
 
 ```bash
 # 確保 .env 文件權限正確
@@ -776,6 +874,24 @@ git status
 grep "^\.env$" .gitignore
 # 預期輸出：.env
 ```
+
+#### **4.7 🎯 自動偵測功能優勢**
+
+✅ **自動化優勢**：
+- 無需手動思考客戶端名稱
+- 避免重複或衝突的命名
+- 自動適應不同使用者和裝置
+- 支援混合模式，靈活性更高
+
+✅ **個人化體驗**：
+- 每個使用者都有獨特的客戶端名稱
+- 便於識別不同裝置的連線狀態
+- QR Code 文件路徑更有意義
+
+✅ **維護便利**：
+- 減少配置錯誤
+- 便於多用戶環境管理
+- 保持向後相容性
 
 ---
 
@@ -1001,15 +1117,29 @@ dig vpn.917420.xyz
 #### **步驟 2.3：生成客戶端配置**
 
 ```bash
-# 生成手機 QR Code
-./scripts/manage.sh qr phone
+# 🤖 如果使用自動偵測，首先查看偵測到的客戶端名稱
+./scripts/manage.sh setup
+# 輸出：✅ 已設定客戶端: john-laptop,shared_tablet
 
-# 生成筆電配置
+# 或查看現有配置
+cat .env | grep WIREGUARD_PEERS
+# 輸出：WIREGUARD_PEERS=john-laptop,shared_tablet
+
+# 生成自動偵測的客戶端 QR Code
+./scripts/manage.sh qr john-laptop
+
+# 📱 如果使用傳統命名，生成傳統客戶端配置
+./scripts/manage.sh qr phone
 ./scripts/manage.sh qr laptop
 
 # 檢查配置文件
 ls -la config/
-cat config/peer_phone/peer_phone.conf
+# 預期輸出：peer_john-laptop/ 或 peer_phone/, peer_laptop/
+
+# 查看配置內容
+cat config/peer_john-laptop/peer_john-laptop.conf  # 自動偵測的客戶端
+# 或
+cat config/peer_phone/peer_phone.conf  # 傳統命名的客戶端
 ```
 
 ---
@@ -1111,6 +1241,9 @@ speedtest-cli
 | 無法 SSH 連線 | SSH 金鑰或 IP 錯誤 | 驗證 VPN_HOST 和 VPN_SSH_KEY |
 | VPN 無法握手 | 防火牆或連接埠問題 | 確認 UDP 51820 已開放 |
 | DNS 無法解析 | Cloudflare 配置問題 | 檢查 CF_API_TOKEN 權限 |
+| 🤖 自動偵測失敗 | .env 配置或權限問題 | 執行 `./scripts/manage.sh setup` |
+| 🤖 客戶端名稱衝突 | 自動偵測與手動名稱重複 | 調整 AUTO_PEER_FORMAT 或使用純模式 |
+| 🤖 setup 指令無效 | 環境變數語法錯誤 | 檢查 .env 檔案格式和權限 |
 
 ---
 
@@ -1641,14 +1774,36 @@ tar -tzf backup/wireguard_backup_*.tar.gz | head -10
 
 ## 🆕 階段九：新增客戶端測試
 
-### 9.1 新增客戶端
+### 9.1 新增客戶端（自動偵測模式）
 
 ```bash
-# 編輯 docker-compose.yml
-nano docker-compose.yml
+# 🤖 方法一：使用混合模式在 .env 中添加新客戶端
+nano .env
 
-# 修改 PEERS 行
-- PEERS=laptop,phone,tablet,work_computer
+# 修改 WIREGUARD_PEERS 行，添加新的手動指定客戶端
+WIREGUARD_PEERS=auto,tablet,work_computer,guest_phone
+
+# 重新設定環境並重啟服務
+./scripts/manage.sh setup
+./scripts/manage.sh restart
+
+# 檢查新客戶端設定
+ls config/
+# 應該看到：peer_john-laptop/ (自動偵測), peer_tablet/, peer_work_computer/, peer_guest_phone/
+
+# 生成新客戶端 QR Code
+./scripts/manage.sh qr tablet
+./scripts/manage.sh qr work_computer
+```
+
+### 9.2 新增客戶端（傳統模式）
+
+```bash
+# 📝 方法二：傳統手動模式（不使用自動偵測）
+nano .env
+
+# 修改 WIREGUARD_PEERS 行
+WIREGUARD_PEERS=laptop,phone,tablet,work_computer
 
 # 重啟服務
 ./scripts/manage.sh restart
