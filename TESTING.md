@@ -1,5 +1,62 @@
 # 🧪 QWV VPN 詳細測試步驟
 
+## ⚡ GitHub Actions 快速配置指引
+
+### 🎯 只想快速完成 GitHub Actions 配置？
+
+如果您已有 GCP 伺服器和 Cloudflare 帳號，按以下順序快速配置：
+
+#### 📝 必須收集的信息
+
+1. **🏠 本地收集伺服器信息**：
+   ```bash
+   # 獲取 GCP 伺服器外部 IP
+   gcloud compute instances list
+   # 記錄：VPN_HOST = "YOUR_SERVER_IP"
+   ```
+
+2. **🌐 獲取 Cloudflare API 權杖**：
+   - 前往：https://dash.cloudflare.com → 我的設定檔 → API 權杖
+   - 建立權杖：DNS:Edit + Zone:Read 權限
+   - 記錄：CF_API_TOKEN = "cf_xxxxxxxx"
+
+3. **🏠 生成 SSH 金鑰**：
+   ```bash
+   ssh-keygen -t ed25519 -f ~/.ssh/qwv_github_key
+   # 複製私鑰：cat ~/.ssh/qwv_github_key
+   # 部署公鑰到伺服器：ssh-copy-id -i ~/.ssh/qwv_github_key.pub ubuntu@YOUR_SERVER_IP
+   ```
+
+#### 🔐 GitHub 配置（2 分鐘完成）
+
+**前往：https://github.com/rich7420/QWV → Settings → Secrets and variables → Actions**
+
+**Variables 頁籤**：
+```
+VPN_DOMAIN = vpn.917420.xyz
+```
+
+**Secrets 頁籤**：
+```
+VPN_HOST = YOUR_SERVER_IP
+VPN_USER = ubuntu
+VPN_SSH_KEY = -----BEGIN OPENSSH PRIVATE KEY-----...
+CF_API_TOKEN = cf_xxxxxxxxxxxxxxxxxxxxxxxx
+```
+
+✅ **完成！推送程式碼觸發自動部署**
+
+#### 🔍 快速檢查清單
+
+在推送程式碼前，請確認：
+
+- [ ] ✅ **GitHub Variables**：VPN_DOMAIN 已設定
+- [ ] ✅ **GitHub Secrets**：VPN_HOST, VPN_USER, VPN_SSH_KEY, CF_API_TOKEN 已設定
+- [ ] ✅ **SSH 測試**：`ssh -i ~/.ssh/qwv_github_key ubuntu@YOUR_SERVER_IP "echo OK"`
+- [ ] ✅ **CF API 測試**：`curl -H "Authorization: Bearer $CF_API_TOKEN" https://api.cloudflare.com/client/v4/user/tokens/verify`
+
+---
+
 ## 🚀 快速測試指南
 
 ### 📐 專案架構
@@ -21,6 +78,41 @@
 - **Docker + WireGuard**: VPN 服務容器化
 - **Cloudflare DDNS**: 動態域名解析
 - **DNS 路由**: 基於域名的服務發現
+
+---
+
+## 🗂️ 配置總覽對照表
+
+### 📍 執行位置圖例
+- 🏠 **本地電腦**：您的個人電腦
+- ☁️ **GCP 伺服器**：雲端虛擬機
+- 🌐 **網頁界面**：瀏覽器操作
+
+### 📋 重要配置分佈一覽
+
+| 配置項目 | 🔐 GitHub Secrets | 🔓 GitHub Variables | 📁 .env 檔案 | 執行位置 |
+|---------|------------------|-------------------|--------------|----------|
+| **伺服器 IP** | ✅ `VPN_HOST` | ❌ | ❌ | 🏠 gcloud CLI |
+| **SSH 用戶名** | ✅ `VPN_USER` | ❌ | ❌ | 🏠 本地 |
+| **SSH 私鑰** | ✅ `VPN_SSH_KEY` | ❌ | ❌ | 🏠 本地生成 |
+| **SSH 埠號** | ✅ `VPN_PORT` | ❌ | ❌ | 🏠 本地 |
+| **VPN 域名** | ❌ | ✅ `VPN_DOMAIN` | ✅ `SERVERURL` | 🌐 Cloudflare |
+| **CF API 權杖** | ✅ `CF_API_TOKEN` | ❌ | ✅ `CF_API_TOKEN` | 🌐 Cloudflare |
+| **CF 域名** | ❌ | ❌ | ✅ `CF_ZONE` | 🌐 Cloudflare |
+| **CF 子域名** | ❌ | ❌ | ✅ `CF_SUBDOMAIN` | 🌐 Cloudflare |
+| **WG 客戶端** | ❌ | ❌ | ✅ `PEERS` | ☁️ 伺服器編輯 |
+
+### 🔍 重要說明
+
+⚠️ **關鍵區別**：
+- **🔐 GitHub Secrets**：供 **GitHub Actions 自動部署** 使用
+- **📁 .env 檔案**：供 **Docker 容器服務** 使用
+- **🔓 GitHub Variables**：供 **GitHub Actions 公開配置** 使用
+
+📝 **配置順序**：
+1. 🏠 **本地準備**：生成 SSH 金鑰、收集伺服器信息
+2. 🌐 **網頁配置**：設定 Cloudflare API 權杖、GitHub Variables/Secrets
+3. ☁️ **伺服器配置**：編輯 .env 檔案、部署服務
 
 ---
 
@@ -55,9 +147,24 @@ which speedtest-cli || echo "⚠️ 建議安裝 speedtest-cli 用於速度測�
 
 ### 🔑 步驟一：伺服器信息收集
 
-#### **1.1 GCP 伺服器 IP 地址獲取**
+> 🎯 **執行位置**：🏠 本地電腦操作 + ☁️ GCP 網頁/CLI
+
+---
+
+## 🖥️ 伺服器信息用途說明
+
+| 信息類型 | 儲存位置 | 用於 |
+|---------|----------|------|
+| **🌐 外部 IP** | 🔐 GitHub Secrets `VPN_HOST` | GitHub Actions SSH 連線 |
+| **👤 用戶名** | 🔐 GitHub Secrets `VPN_USER` | GitHub Actions SSH 登入 |
+| **🔌 SSH 埠** | 🔐 GitHub Secrets `VPN_PORT` | GitHub Actions SSH 連線 |
+
+---
+
+#### **1.1 🏠 GCP 伺服器 IP 地址獲取（本地操作）**
 
 ```bash
+# 🏠 在本地電腦執行（需要安裝 gcloud CLI）
 # 如果您已經有 GCP 虛擬機，獲取外部 IP
 gcloud compute instances list --format="table(name,zone,status,EXTERNAL_IP)"
 
@@ -164,7 +271,22 @@ VPN_PORT_EU = "22"
 
 ### 🌐 步驟二：Cloudflare API 權杖獲取
 
-#### **2.1 登入 Cloudflare 並生成 API 權杖**
+> 🎯 **執行位置**：🌐 Cloudflare 網頁界面操作 + 🏠 本地測試
+
+---
+
+## 🔑 Cloudflare API 權杖用途說明
+
+| 權杖用途 | 儲存位置 | 用於 |
+|---------|----------|------|
+| **🔐 GitHub Secrets** | GitHub Actions `CF_API_TOKEN` | 自動部署時更新 DNS |
+| **📁 .env 檔案** | GCP 伺服器 `.env` | Docker 容器 DDNS 更新 |
+
+⚠️ **注意**：可以使用相同的 API 權杖，或為不同環境創建不同權杖
+
+---
+
+#### **2.1 🌐 登入 Cloudflare 並生成 API 權杖（網頁操作）**
 
 1. **前往 Cloudflare 儀表板**：
    ```
@@ -268,9 +390,23 @@ VPN_DOMAIN_EU = "vpn-eu.917420.xyz"
 
 ### 🔑 步驟三：SSH 金鑰生成與部署
 
-#### **3.1 生成專用 SSH 金鑰**
+> 🎯 **執行位置**：🏠 本地電腦操作 + ☁️ GCP 伺服器操作
+
+---
+
+## 🔐 SSH 金鑰用途說明
+
+| 金鑰用途 | 儲存位置 | 用於 |
+|---------|----------|------|
+| **🔑 私鑰** | 🏠 本地 `~/.ssh/` + 🔐 GitHub Secrets | GitHub Actions SSH 連線到伺服器 |
+| **🔓 公鑰** | ☁️ GCP 伺服器 `~/.ssh/authorized_keys` | 允許 GitHub Actions 登入 |
+
+---
+
+#### **3.1 🏠 生成專用 SSH 金鑰（本地操作）**
 
 ```bash
+# 🏠 在本地電腦執行
 # 創建 SSH 金鑰目錄（如果不存在）
 mkdir -p ~/.ssh
 
@@ -304,13 +440,121 @@ cat ~/.ssh/qwv_github_key
 
 #### **3.3 部署公鑰到伺服器**
 
-**單環境部署**：
-```bash
-# 部署公鑰到伺服器
-ssh-copy-id -i ~/.ssh/qwv_github_key.pub ubuntu@YOUR_SERVER_IP
+> ⚠️ **常見問題**：如果遇到 `Permission denied (publickey)` 錯誤，請先參考下方的故障排除步驟
 
-# 或手動複製（如果 ssh-copy-id 不可用）
-cat ~/.ssh/qwv_github_key.pub | ssh ubuntu@YOUR_SERVER_IP "mkdir -p ~/.ssh && cat >> ~/.ssh/authorized_keys"
+**🔍 步驟 3.3.1：確認正確的 SSH 用戶名**
+
+```bash
+# 🏠 在本地電腦執行
+# 1. 確認 GCP 虛擬機的正確用戶名
+gcloud compute instances describe YOUR_VM_NAME --zone=YOUR_ZONE --format="value(metadata.items[key=ssh-keys].value)"
+
+# 2. 或檢查您在創建虛擬機時使用的用戶名
+gcloud compute ssh YOUR_VM_NAME --zone=YOUR_ZONE --dry-run
+# 這會顯示 gcloud 嘗試使用的用戶名
+
+# 3. 常見的 GCP 用戶名：
+# - ubuntu (Ubuntu 映像檔)
+# - debian (Debian 映像檔)  
+# - 您的 Google 帳號用戶名（自訂映像檔）
+```
+
+**🔧 步驟 3.3.2：方法一 - 使用 gcloud compute ssh（推薦）**
+
+```bash
+# 🏠 在本地電腦執行
+# 使用 gcloud 自動管理 SSH 金鑰
+gcloud compute ssh YOUR_VM_NAME --zone=YOUR_ZONE
+
+# 一旦成功登入，在伺服器上執行：
+# ☁️ 在 GCP 伺服器上執行
+cat ~/.ssh/authorized_keys
+# 記錄現有的公鑰格式，我們需要添加 GitHub Actions 專用金鑰
+```
+
+**🔧 步驟 3.3.3：方法二 - 手動添加公鑰（如果方法一不可行）**
+
+```bash
+# 🏠 在本地電腦執行
+# 1. 顯示公鑰內容
+echo "=== 請複製以下公鑰內容 ==="
+cat ~/.ssh/qwv_github_key.pub
+
+# 2. 使用現有的 SSH 連線方式登入伺服器
+# （使用您平時能成功登入的方式）
+
+# ☁️ 登入 GCP 伺服器後執行：
+# 創建 .ssh 目錄（如果不存在）
+mkdir -p ~/.ssh
+
+# 添加公鑰到 authorized_keys
+echo "YOUR_PUBLIC_KEY_CONTENT_HERE" >> ~/.ssh/authorized_keys
+
+# 設定正確權限
+chmod 700 ~/.ssh
+chmod 600 ~/.ssh/authorized_keys
+
+# 檢查 authorized_keys 內容
+cat ~/.ssh/authorized_keys
+```
+
+**🔧 步驟 3.3.4：方法三 - 透過 GCP Console（網頁界面）**
+
+1. **前往 GCP Console**：
+   ```
+   https://console.cloud.google.com/compute/instances
+   ```
+
+2. **編輯虛擬機 SSH 金鑰**：
+   ```
+   點擊您的虛擬機名稱 → 點擊「編輯」→ 滾動到「SSH 金鑰」區段
+   ```
+
+3. **添加新金鑰**：
+   ```bash
+   # 🏠 複製本地公鑰內容
+   cat ~/.ssh/qwv_github_key.pub
+   
+   # 在 GCP Console 中點擊「+ 新增項目」
+   # 貼上公鑰內容，格式應為：
+   # ssh-ed25519 AAAAC3NzaC1lZDI1... github-actions@917420.xyz
+   ```
+
+4. **儲存變更**：
+   ```
+   點擊「儲存」，等待幾分鐘讓變更生效
+   ```
+
+**🔧 步驟 3.3.5：故障排除常見問題**
+
+```bash
+# 問題 1：用戶名錯誤
+# 症狀：Permission denied immediately
+# 解決：確認正確的用戶名
+ssh -v YOUR_USERNAME@YOUR_SERVER_IP  # 使用 -v 查看詳細日誌
+
+# 問題 2：SSH 服務配置問題  
+# 症狀：PasswordAuthentication disabled
+# 解決：使用上述方法三透過 GCP Console 添加
+
+# 問題 3：防火牆阻擋 SSH
+# 症狀：Connection timeout
+# 解決：確認防火牆規則
+gcloud compute firewall-rules list --filter="name:default-allow-ssh"
+
+# 問題 4：SSH 金鑰格式問題
+# 症狀：Key format not recognized  
+# 解決：檢查公鑰格式
+head -1 ~/.ssh/qwv_github_key.pub  # 應該以 ssh-ed25519 開頭
+```
+
+**✅ 步驟 3.3.6：驗證部署成功**
+
+```bash
+# 🏠 在本地電腦測試新金鑰
+ssh -i ~/.ssh/qwv_github_key YOUR_USERNAME@YOUR_SERVER_IP "echo 'GitHub Actions SSH key deployment successful'"
+
+# 預期輸出：GitHub Actions SSH key deployment successful
 ```
 
 **多環境部署**：
@@ -378,10 +622,29 @@ cat ~/.ssh/qwv_eu_key
 
 ### ⚙️ 步驟四：.env 環境變數配置
 
-#### **4.1 創建本地 .env 文件**
+> 🎯 **執行位置**：☁️ GCP 伺服器執行
+
+---
+
+## 📁 .env 檔案配置對照表
+
+### 🔍 配置分類說明
+
+| 配置項目 | 用途 | 儲存位置 | 安全性 |
+|---------|------|----------|--------|
+| **📁 .env** | 伺服器本地環境變數 | GCP 伺服器 `/QWV/.env` | 🔒 伺服器本地檔案 |
+| **🔐 GitHub Secrets** | CI/CD 部署用敏感信息 | GitHub Actions 加密儲存 | 🔒 雲端加密 |
+
+⚠️ **重要區別**：
+- `.env` 檔案：存放在 **GCP 伺服器**，供 Docker 容器使用
+- GitHub Secrets：存放在 **GitHub**，供自動部署使用
+
+---
+
+#### **4.1 創建伺服器端 .env 文件**
 
 ```bash
-# 在專案根目錄下創建 .env 文件
+# ☁️ 在 GCP 伺服器上執行
 cd QWV  # 確保在專案根目錄
 cp env.example .env
 
@@ -518,6 +781,8 @@ grep "^\.env$" .gitignore
 
 ### 💻 步驟五：GitHub Variables 和 Secrets 配置
 
+> 🎯 **執行位置**：🌐 GitHub 網頁界面操作
+
 #### **5.1 前往 GitHub 專案設定**
 
 1. **開啟 GitHub 專案頁面**：
@@ -535,74 +800,82 @@ grep "^\.env$" .gitignore
    左側選單 → "Secrets and variables" → "Actions"
    ```
 
-#### **5.2 配置 Variables（公開配置）**
+---
 
-**點擊 "Variables" 頁籤**
+## 🔐 GitHub Actions 配置對照表
+
+### 📋 配置分類說明
+
+| 配置類型 | 用途 | 安全性 | 儲存位置 |
+|---------|------|--------|----------|
+| **🔓 Variables** | 公開配置（域名等） | 非敏感 | GitHub Actions Variables |
+| **🔒 Secrets** | 敏感信息（SSH金鑰、API權杖） | 加密儲存 | GitHub Actions Secrets |
+| **📁 .env** | 伺服器本地環境變數 | 本地檔案 | GCP 伺服器 |
+
+---
+
+#### **5.2 🔓 配置 Variables（公開配置）**
+
+> 🌐 **操作位置**：GitHub → Settings → Secrets and variables → Actions → **Variables 頁籤**
 
 **單環境 Variables 配置**：
-```
-Name: VPN_DOMAIN
-Value: vpn.917420.xyz
-Description: Primary VPN domain name
-```
+
+| Variable 名稱 | 值來源 | 範例值 | 說明 |
+|--------------|--------|--------|------|
+| `VPN_DOMAIN` | 步驟 2.5 | `vpn.917420.xyz` | VPN 服務的完整域名 |
 
 **多環境 Variables 配置**：
-```
-Name: VPN_DOMAIN_ASIA
-Value: vpn-asia.917420.xyz
-Description: Asia region VPN domain
 
-Name: VPN_DOMAIN_US  
-Value: vpn-us.917420.xyz
-Description: US region VPN domain
+| Variable 名稱 | 值來源 | 範例值 | 說明 |
+|--------------|--------|--------|------|
+| `VPN_DOMAIN_ASIA` | 步驟 2.5 | `vpn-asia.917420.xyz` | 亞洲區域 VPN 域名 |
+| `VPN_DOMAIN_US` | 步驟 2.5 | `vpn-us.917420.xyz` | 美國區域 VPN 域名 |
+| `VPN_DOMAIN_EU` | 步驟 2.5 | `vpn-eu.917420.xyz` | 歐洲區域 VPN 域名 |
 
-Name: VPN_DOMAIN_EU
-Value: vpn-eu.917420.xyz
-Description: EU region VPN domain
-```
+---
 
-#### **5.3 配置 Secrets（敏感信息）**
+#### **5.3 🔒 配置 Secrets（敏感信息）**
 
-**點擊 "Secrets" 頁籤**
+> 🌐 **操作位置**：GitHub → Settings → Secrets and variables → Actions → **Secrets 頁籤**
 
 **單環境 Secrets 配置**：
 
-| Secret 名稱 | 值來源 | 填入值 |
-|------------|--------|--------|
-| `VPN_HOST` | 步驟 1.3 | `YOUR_SERVER_IP` |
-| `VPN_USER` | 步驟 1.3 | `ubuntu` |
-| `VPN_SSH_KEY` | 步驟 3.5 | `-----BEGIN OPENSSH PRIVATE KEY-----\n...` |
-| `VPN_PORT` | 步驟 1.3 | `22` (可選，預設值) |
-| `CF_API_TOKEN` | 步驟 2.5 | `cf_xxxxxxxxxxxxxxxxxxxxxxxx` |
+| Secret 名稱 | 值來源 | 範例值 | 說明 | 🚨 注意事項 |
+|------------|--------|--------|------|------------|
+| `VPN_HOST` | 步驟 1.3 | `203.0.113.1` | GCP 伺服器的外部 IP 地址 | ⚠️ 使用真實 IP，不是內網 IP |
+| `VPN_USER` | 步驟 1.3 | `ubuntu` | SSH 登入用戶名 | 🔑 通常是 ubuntu 或 您的用戶名 |
+| `VPN_SSH_KEY` | 步驟 3.5 | `-----BEGIN OPENSSH...` | SSH 私鑰完整內容 | 🔒 必須包含 BEGIN/END 行 |
+| `VPN_PORT` | 步驟 1.3 | `22` | SSH 連接埠 | ⚪ 可選，預設 22 |
+| `CF_API_TOKEN` | 步驟 2.5 | `cf_xxxxxxxxxxxxx` | Cloudflare API 權杖 | 🌐 必須有 DNS:Edit 權限 |
 
 **多環境 Secrets 配置**：
 
 **🌏 亞洲環境**：
-| Secret 名稱 | 值來源 | 填入值 |
-|------------|--------|--------|
-| `VPN_HOST_ASIA` | 步驟 1.3 | `ASIA_SERVER_IP` |
-| `VPN_USER_ASIA` | 步驟 1.3 | `ubuntu` |
-| `VPN_SSH_KEY_ASIA` | 步驟 3.5 | `-----BEGIN OPENSSH PRIVATE KEY-----\n...` |
-| `VPN_PORT_ASIA` | 步驟 1.3 | `22` (可選) |
-| `CF_API_TOKEN_ASIA` | 步驟 2.5 | `cf_xxxxxxxxxxxxxxxxxxxxxxxx` |
+| Secret 名稱 | 值來源 | 範例值 | 說明 |
+|------------|--------|--------|------|
+| `VPN_HOST_ASIA` | 步驟 1.3 | `ASIA_SERVER_IP` | 亞洲伺服器 IP |
+| `VPN_USER_ASIA` | 步驟 1.3 | `ubuntu` | 亞洲伺服器用戶名 |
+| `VPN_SSH_KEY_ASIA` | 步驟 3.5 | `-----BEGIN OPENSSH...` | 亞洲伺服器 SSH 私鑰 |
+| `VPN_PORT_ASIA` | 步驟 1.3 | `22` | 亞洲伺服器 SSH 埠 |
+| `CF_API_TOKEN_ASIA` | 步驟 2.5 | `cf_xxxxxxxxxxxxx` | 亞洲環境 CF 權杖 |
 
 **🇺🇸 美國環境**：
-| Secret 名稱 | 值來源 | 填入值 |
-|------------|--------|--------|
-| `VPN_HOST_US` | 步驟 1.3 | `US_SERVER_IP` |
-| `VPN_USER_US` | 步驟 1.3 | `ubuntu` |
-| `VPN_SSH_KEY_US` | 步驟 3.5 | `-----BEGIN OPENSSH PRIVATE KEY-----\n...` |
-| `VPN_PORT_US` | 步驟 1.3 | `22` (可選) |
-| `CF_API_TOKEN_US` | 步驟 2.5 | `cf_xxxxxxxxxxxxxxxxxxxxxxxx` |
+| Secret 名稱 | 值來源 | 範例值 | 說明 |
+|------------|--------|--------|------|
+| `VPN_HOST_US` | 步驟 1.3 | `US_SERVER_IP` | 美國伺服器 IP |
+| `VPN_USER_US` | 步驟 1.3 | `ubuntu` | 美國伺服器用戶名 |
+| `VPN_SSH_KEY_US` | 步驟 3.5 | `-----BEGIN OPENSSH...` | 美國伺服器 SSH 私鑰 |
+| `VPN_PORT_US` | 步驟 1.3 | `22` | 美國伺服器 SSH 埠 |
+| `CF_API_TOKEN_US` | 步驟 2.5 | `cf_xxxxxxxxxxxxx` | 美國環境 CF 權杖 |
 
 **🇪🇺 歐洲環境**：
-| Secret 名稱 | 值來源 | 填入值 |
-|------------|--------|--------|
-| `VPN_HOST_EU` | 步驟 1.3 | `EU_SERVER_IP` |
-| `VPN_USER_EU` | 步驟 1.3 | `ubuntu` |
-| `VPN_SSH_KEY_EU` | 步驟 3.5 | `-----BEGIN OPENSSH PRIVATE KEY-----\n...` |
-| `VPN_PORT_EU` | 步驟 1.3 | `22` (可選) |
-| `CF_API_TOKEN_EU` | 步驟 2.5 | `cf_xxxxxxxxxxxxxxxxxxxxxxxx` |
+| Secret 名稱 | 值來源 | 範例值 | 說明 |
+|------------|--------|--------|------|
+| `VPN_HOST_EU` | 步驟 1.3 | `EU_SERVER_IP` | 歐洲伺服器 IP |
+| `VPN_USER_EU` | 步驟 1.3 | `ubuntu` | 歐洲伺服器用戶名 |
+| `VPN_SSH_KEY_EU` | 步驟 3.5 | `-----BEGIN OPENSSH...` | 歐洲伺服器 SSH 私鑰 |
+| `VPN_PORT_EU` | 步驟 1.3 | `22` | 歐洲伺服器 SSH 埠 |
+| `CF_API_TOKEN_EU` | 步驟 2.5 | `cf_xxxxxxxxxxxxx` | 歐洲環境 CF 權杖 |
 
 #### **5.4 配置檢查清單**
 
@@ -2047,6 +2320,57 @@ curl -X GET "https://api.cloudflare.com/client/v4/zones?name=$CF_ZONE" \
 # 前往 GitHub → Actions → Run workflow → 選擇 "auto" 模式
 ```
 
+#### 問題 7：配置分離搞混
+```bash
+# 症狀：不確定某個配置要放在哪裡
+# 解決方案：
+
+# 🔐 GitHub Secrets (敏感信息，用於自動部署)
+VPN_HOST=203.0.113.1          # 伺服器 IP，GitHub Actions 用來 SSH 連線
+VPN_USER=ubuntu               # SSH 用戶名，GitHub Actions 用來登入
+VPN_SSH_KEY=-----BEGIN...     # SSH 私鑰，GitHub Actions 用來認證
+CF_API_TOKEN=cf_xxxx          # Cloudflare API，GitHub Actions 用來更新 DNS
+
+# 🔓 GitHub Variables (公開配置，用於自動部署)
+VPN_DOMAIN=vpn.917420.xyz     # VPN 域名，GitHub Actions 知道要部署的域名
+
+# 📁 .env 檔案 (伺服器本地，用於 Docker 容器)
+CF_API_TOKEN=cf_xxxx          # 同一個 API 權杖，Docker 容器用來 DDNS 更新
+CF_ZONE=917420.xyz            # 域名，Docker 容器知道要更新哪個域名
+CF_SUBDOMAIN=vpn              # 子域名，Docker 容器知道要更新哪個子域名
+SERVERURL=vpn.917420.xyz      # VPN 服務域名，WireGuard 配置用
+PEERS=laptop,phone            # 客戶端列表，WireGuard 生成配置用
+
+# 📝 記憶口訣：
+# - GitHub = 自動部署用
+# - .env = 服務運行用
+# - 敏感信息 → Secrets
+# - 域名配置 → Variables
+```
+
+#### 問題 8：多環境配置重複
+```bash
+# 症狀：多環境配置很多重複的值
+# 解決方案：
+
+# ✅ 推薦：共用相同的 API 權杖
+CF_API_TOKEN=cf_xxxx          # 三個環境都使用相同權杖
+
+# ❌ 不建議：為每個環境創建不同權杖
+CF_API_TOKEN_ASIA=cf_xxxx1    # 除非有特殊安全需求
+CF_API_TOKEN_US=cf_xxxx2
+CF_API_TOKEN_EU=cf_xxxx3
+
+# 🔑 SSH 金鑰建議：
+# ✅ 簡單方式：共用同一個金鑰
+VPN_SSH_KEY=same_key_content
+
+# ✅ 安全方式：每環境獨立金鑰
+VPN_SSH_KEY_ASIA=asia_key_content
+VPN_SSH_KEY_US=us_key_content  
+VPN_SSH_KEY_EU=eu_key_content
+```
+
 ---
 
 ### 🐛 部署階段問題
@@ -2244,4 +2568,47 @@ ssh user@host "df -h"
 1. 本文檔的故障排除章節
 2. README.md 的故障排除指南
 3. 規劃書.md 的詳細技術分析
-4. 或提交 GitHub Issue 尋求協助 
+4. 或提交 GitHub Issue 尋求協助
+
+---
+
+## 📊 最終配置總覽表
+
+### 🔐 GitHub Actions Secrets（敏感信息）
+
+| Secret 名稱 | 範例值 | 來源步驟 | 必要性 | 說明 |
+|------------|--------|----------|--------|------|
+| `VPN_HOST` | `203.0.113.1` | 步驟 1.3 | ✅ 必要 | GCP 伺服器外部 IP |
+| `VPN_USER` | `ubuntu` | 步驟 1.3 | ✅ 必要 | SSH 登入用戶名 |
+| `VPN_SSH_KEY` | `-----BEGIN OPENSSH...` | 步驟 3.5 | ✅ 必要 | SSH 私鑰完整內容 |
+| `VPN_PORT` | `22` | 步驟 1.3 | ⚪ 可選 | SSH 連接埠（預設 22）|
+| `CF_API_TOKEN` | `cf_xxxxxxxxxx` | 步驟 2.5 | ✅ 必要 | Cloudflare API 權杖 |
+
+### 🔓 GitHub Actions Variables（公開配置）
+
+| Variable 名稱 | 範例值 | 來源步驟 | 必要性 | 說明 |
+|--------------|--------|----------|--------|------|
+| `VPN_DOMAIN` | `vpn.917420.xyz` | 步驟 2.5 | ✅ 必要 | VPN 服務完整域名 |
+
+### 📁 .env 檔案（伺服器本地）
+
+| 環境變數 | 範例值 | 來源步驟 | 必要性 | 說明 |
+|---------|--------|----------|--------|------|
+| `CF_API_TOKEN` | `cf_xxxxxxxxxx` | 步驟 2.5 | ✅ 必要 | Cloudflare API 權杖 |
+| `CF_ZONE` | `917420.xyz` | 步驟 2.5 | ✅ 必要 | Cloudflare 域名 |
+| `CF_SUBDOMAIN` | `vpn` | 步驟 2.5 | ✅ 必要 | VPN 子域名 |
+| `SERVERURL` | `vpn.917420.xyz` | 步驟 2.5 | ✅ 必要 | WireGuard 伺服器域名 |
+| `PEERS` | `laptop,phone,tablet` | 用戶定義 | ✅ 必要 | WireGuard 客戶端列表 |
+| `SERVERPORT` | `51820` | 預設值 | ✅ 必要 | WireGuard 連接埠 |
+| `INTERNAL_SUBNET` | `10.13.13.0` | 預設值 | ✅ 必要 | VPN 內網網段 |
+
+### 💡 配置提醒
+
+⚠️ **相同值但不同用途**：
+- `CF_API_TOKEN` 同時存在於 GitHub Secrets 和 .env 檔案
+- `SERVERURL` 和 `VPN_DOMAIN` 通常是相同的域名
+- GitHub 配置用於自動部署，.env 配置用於服務運行
+
+🔄 **配置同步**：
+- 修改域名時，需要同時更新 GitHub Variables 和 .env 檔案
+- 更換 API 權杖時，需要同時更新 GitHub Secrets 和 .env 檔案
