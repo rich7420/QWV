@@ -1,5 +1,235 @@
 # 🧪 QWV VPN 詳細測試步驟
 
+## 🚀 快速測試指南
+
+### 📐 專案架構
+
+**QWV** 是基於 **DNS 服務路由** 的企業級 WireGuard VPN 解決方案：
+
+```
+📱 客戶端設備 → DNS 解析 → 對應區域的 VPN 伺服器 → 🌐 網路流量路由
+
+單環境模式：vpn.917420.xyz → 單一 VPN 伺服器
+多環境模式：
+├── vpn-asia.917420.xyz → 🌏 亞洲 VPN 伺服器 (GCP Asia)
+├── vpn-us.917420.xyz   → 🇺🇸 美國 VPN 伺服器 (GCP US)
+└── vpn-eu.917420.xyz   → 🇪🇺 歐洲 VPN 伺服器 (GCP EU)
+```
+
+**核心組件**：
+- **GitHub Actions**: 自動化部署和管理
+- **Docker + WireGuard**: VPN 服務容器化
+- **Cloudflare DDNS**: 動態域名解析
+- **DNS 路由**: 基於域名的服務發現
+
+---
+
+### 1️⃣ GitHub 配置要求
+
+#### **選項 A: 單環境部署 (簡單模式)**
+
+**前往**: Settings → Secrets and variables → Actions
+
+**Variables 頁籤**:
+```
+VPN_DOMAIN = "vpn.917420.xyz"
+```
+
+**Secrets 頁籤**:
+```
+VPN_HOST = "YOUR_GCP_EXTERNAL_IP"
+VPN_USER = "ubuntu"
+VPN_SSH_KEY = "-----BEGIN OPENSSH PRIVATE KEY-----
+MIIEowIBAAKCAQEA... (完整私鑰內容)
+-----END OPENSSH PRIVATE KEY-----"
+CF_API_TOKEN = "YOUR_CLOUDFLARE_API_TOKEN"
+```
+
+#### **選項 B: 多環境部署 (企業模式)**
+
+**Variables 頁籤** (DNS 路由配置):
+```
+VPN_DOMAIN_ASIA = "vpn-asia.917420.xyz"
+VPN_DOMAIN_US = "vpn-us.917420.xyz"
+VPN_DOMAIN_EU = "vpn-eu.917420.xyz"
+```
+
+**Secrets 頁籤** (每個環境需要獨立設定):
+```
+# 亞洲環境
+VPN_HOST_ASIA = "ASIA_GCP_IP"
+VPN_USER_ASIA = "ubuntu"
+VPN_SSH_KEY_ASIA = "亞洲伺服器私鑰"
+CF_API_TOKEN_ASIA = "亞洲 Cloudflare Token"
+
+# 美國環境
+VPN_HOST_US = "US_GCP_IP"
+VPN_USER_US = "ubuntu"
+VPN_SSH_KEY_US = "美國伺服器私鑰"
+CF_API_TOKEN_US = "美國 Cloudflare Token"
+
+# 歐洲環境
+VPN_HOST_EU = "EU_GCP_IP"
+VPN_USER_EU = "ubuntu"
+VPN_SSH_KEY_EU = "歐洲伺服器私鑰"
+CF_API_TOKEN_EU = "歐洲 Cloudflare Token"
+```
+
+---
+
+### 2️⃣ GCP 伺服器設定要求
+
+#### **單環境 (1 台伺服器)**
+```bash
+# 1. 建立 GCP 虛擬機
+gcloud compute instances create qwv-vpn-single \
+    --zone=asia-east1-a \
+    --machine-type=e2-micro \
+    --image-family=ubuntu-2204-lts \
+    --image-project=ubuntu-os-cloud \
+    --boot-disk-size=10GB
+
+# 2. 開放防火牆
+gcloud compute firewall-rules create allow-wireguard \
+    --allow udp:51820 \
+    --source-ranges 0.0.0.0/0 \
+    --description "Allow WireGuard VPN"
+
+# 3. 獲取外部 IP
+gcloud compute instances describe qwv-vpn-single \
+    --zone=asia-east1-a \
+    --format="value(networkInterfaces[0].accessConfigs[0].natIP)"
+```
+
+#### **多環境 (3 台伺服器)**
+```bash
+# 亞洲區域
+gcloud compute instances create qwv-vpn-asia \
+    --zone=asia-east1-a \
+    --machine-type=e2-micro \
+    --image-family=ubuntu-2204-lts \
+    --image-project=ubuntu-os-cloud
+
+# 美國區域
+gcloud compute instances create qwv-vpn-us \
+    --zone=us-central1-a \
+    --machine-type=e2-micro \
+    --image-family=ubuntu-2204-lts \
+    --image-project=ubuntu-os-cloud
+
+# 歐洲區域
+gcloud compute instances create qwv-vpn-eu \
+    --zone=europe-west1-a \
+    --machine-type=e2-micro \
+    --image-family=ubuntu-2204-lts \
+    --image-project=ubuntu-os-cloud
+
+# 為每台伺服器都需要開放 UDP 51820 連接埠
+```
+
+**伺服器需求**:
+- **作業系統**: Ubuntu 22.04 LTS
+- **規格**: 最低 1 vCPU, 1GB RAM, 10GB 磁碟
+- **網路**: 外部 IP + UDP 51820 開放
+- **權限**: SSH 存取 + Docker 安裝權限
+
+---
+
+### 3️⃣ 客戶端連線步驟
+
+#### **步驟 1: 觸發自動部署**
+```bash
+# 推送程式碼到 GitHub 觸發自動部署
+git push origin main
+
+# 或透過 GitHub Actions UI 手動觸發:
+# GitHub → Actions → "Multi-Environment QWV VPN Deployment" → Run workflow
+```
+
+#### **步驟 2: 獲取客戶端配置**
+```bash
+# SSH 登入伺服器
+ssh ubuntu@YOUR_SERVER_IP
+
+# 進入專案目錄
+cd QWV
+
+# 檢查服務狀態
+./scripts/manage.sh status
+
+# 生成客戶端 QR Code (手機用)
+./scripts/manage.sh qr phone
+
+# 獲取設定檔 (電腦用)
+./scripts/manage.sh qr laptop
+# 設定檔位置: config/peer_laptop/peer_laptop.conf
+```
+
+#### **步驟 3: 客戶端設備設定**
+
+**手機 (Android/iOS)**:
+1. 下載 WireGuard 應用程式
+2. 點擊 "+" → "從 QR Code 建立"
+3. 掃描伺服器生成的 QR Code
+4. 命名隧道（如 "917420 VPN"）
+5. 啟動連線
+
+**電腦 (Windows/macOS/Linux)**:
+1. 下載 WireGuard 客戶端
+2. 複製設定檔到本機:
+   ```bash
+   scp ubuntu@YOUR_SERVER_IP:~/QWV/config/peer_laptop/peer_laptop.conf ~/wireguard.conf
+   ```
+3. 在 WireGuard 中匯入設定檔
+4. 啟動連線
+
+#### **步驟 4: 連線驗證**
+```bash
+# 連線前檢查原始 IP
+curl https://ipinfo.io/ip
+
+# 啟動 VPN 連線
+
+# 連線後檢查新 IP (應該是伺服器 IP)
+curl https://ipinfo.io/ip
+
+# 測試 DNS 解析
+nslookup google.com
+
+# 測試網路連通性
+ping -c 4 8.8.8.8
+```
+
+---
+
+### 📊 預期結果
+
+**成功連線後應該看到**:
+- ✅ 公網 IP 變更為伺服器 IP
+- ✅ DNS 解析正常工作
+- ✅ 網路連通性良好
+- ✅ 瀏覽網站正常
+
+**多環境模式額外驗證**:
+- 🌏 客戶端可選擇連接不同區域的伺服器
+- 🚀 地理位置最佳化 (亞洲用戶連接 vpn-asia.917420.xyz)
+- 🛡️ 單一區域故障不影響其他區域
+
+---
+
+### 🆘 快速故障排除
+
+| 問題 | 可能原因 | 解決方案 |
+|------|----------|----------|
+| GitHub Actions 失敗 | Variables/Secrets 配置錯誤 | 檢查配置完整性 |
+| 無法 SSH 連線 | SSH 金鑰或 IP 錯誤 | 驗證 VPN_HOST 和 VPN_SSH_KEY |
+| VPN 無法握手 | 防火牆或連接埠問題 | 確認 UDP 51820 已開放 |
+| DNS 無法解析 | Cloudflare 配置問題 | 檢查 CF_API_TOKEN 權限 |
+
+---
+
+## 📋 完整測試流程
+
 本文檔提供完整的測試流程，幫助您驗證 QWV VPN 專案的所有功能。包含自動化驗證、手動測試和故障排除。
 
 ## 📋 測試前檢查清單
