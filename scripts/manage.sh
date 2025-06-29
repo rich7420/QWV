@@ -40,7 +40,7 @@ process_peers_config() {
     # 載入環境變數
     if [ -f .env ]; then
         set -a  # 自動匯出所有變數
-        # shellcheck source=.env
+        # shellcheck disable=SC1091
         source .env
         set +a
     fi
