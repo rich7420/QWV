@@ -24,131 +24,677 @@
 
 ---
 
-### 1️⃣ GitHub 配置要求
+## 📋 配置前準備清單
 
-#### **選項 A: 單環境部署 (簡單模式)**
+### 🛠️ 必要工具檢查
 
-**前往**: Settings → Secrets and variables → Actions
+在開始配置前，請確保您具備以下工具：
 
-**Variables 頁籤**:
-```
-VPN_DOMAIN = "vpn.917420.xyz"
-```
+```bash
+# 檢查本機必要工具
+which ssh || echo "❌ 需要安裝 SSH 客戶端"
+which ssh-keygen || echo "❌ 需要安裝 SSH 工具"
+which git || echo "❌ 需要安裝 Git"
+which curl || echo "❌ 需要安裝 curl"
 
-**Secrets 頁籤**:
-```
-VPN_HOST = "YOUR_GCP_EXTERNAL_IP"
-VPN_USER = "ubuntu"
-VPN_SSH_KEY = "-----BEGIN OPENSSH PRIVATE KEY-----
-MIIEowIBAAKCAQEA... (完整私鑰內容)
------END OPENSSH PRIVATE KEY-----"
-CF_API_TOKEN = "YOUR_CLOUDFLARE_API_TOKEN"
+# 檢查可選工具（建議安裝）
+which qrencode || echo "⚠️ 建議安裝 qrencode 用於 QR Code 顯示"
+which speedtest-cli || echo "⚠️ 建議安裝 speedtest-cli 用於速度測試"
 ```
 
-#### **選項 B: 多環境部署 (企業模式)**
+### 🎯 配置目標確認
 
-**Variables 頁籤** (DNS 路由配置):
+**選擇您的部署架構**：
+
+- **🔧 單環境部署（推薦新手）**：1 台伺服器，適合個人使用
+- **🌍 多環境部署（企業級）**：3 台伺服器（亞洲/美國/歐洲），提供地理分佈
+
+---
+
+## 📝 詳細配置步驟
+
+### 🔑 步驟一：伺服器信息收集
+
+#### **1.1 GCP 伺服器 IP 地址獲取**
+
+```bash
+# 如果您已經有 GCP 虛擬機，獲取外部 IP
+gcloud compute instances list --format="table(name,zone,status,EXTERNAL_IP)"
+
+# 獲取特定虛擬機的外部 IP
+gcloud compute instances describe YOUR_VM_NAME \
+    --zone=YOUR_ZONE \
+    --format="value(networkInterfaces[0].accessConfigs[0].natIP)"
+
+# 範例輸出：203.0.113.45
 ```
+
+**如果尚未建立 GCP 虛擬機**：
+
+```bash
+# 單環境：建立 1 台伺服器
+gcloud compute instances create qwv-vpn-main \
+    --zone=asia-east1-a \
+    --machine-type=e2-micro \
+    --image-family=ubuntu-2204-lts \
+    --image-project=ubuntu-os-cloud \
+    --boot-disk-size=10GB \
+    --tags=wireguard-server
+
+# 多環境：建立 3 台伺服器
+gcloud compute instances create qwv-vpn-asia \
+    --zone=asia-east1-a \
+    --machine-type=e2-micro \
+    --image-family=ubuntu-2204-lts \
+    --image-project=ubuntu-os-cloud \
+    --boot-disk-size=10GB \
+    --tags=wireguard-server
+
+gcloud compute instances create qwv-vpn-us \
+    --zone=us-central1-a \
+    --machine-type=e2-micro \
+    --image-family=ubuntu-2204-lts \
+    --image-project=ubuntu-os-cloud \
+    --boot-disk-size=10GB \
+    --tags=wireguard-server
+
+gcloud compute instances create qwv-vpn-eu \
+    --zone=europe-west1-a \
+    --machine-type=e2-micro \
+    --image-family=ubuntu-2204-lts \
+    --image-project=ubuntu-os-cloud \
+    --boot-disk-size=10GB \
+    --tags=wireguard-server
+
+# 開放防火牆（所有伺服器都需要）
+gcloud compute firewall-rules create allow-wireguard \
+    --allow udp:51820 \
+    --source-ranges 0.0.0.0/0 \
+    --target-tags wireguard-server \
+    --description "Allow WireGuard VPN traffic"
+```
+
+#### **1.2 確認伺服器訪問權限**
+
+```bash
+# 測試 SSH 連線到每台伺服器
+ssh ubuntu@YOUR_SERVER_IP "echo 'Server accessible: $(hostname)'"
+
+# 檢查伺服器基本信息
+ssh ubuntu@YOUR_SERVER_IP "
+echo '=== Server Information ==='
+echo 'Hostname: $(hostname)'
+echo 'OS Version: $(lsb_release -d)'
+echo 'Available Memory: $(free -h | grep Mem)'
+echo 'Available Disk: $(df -h / | tail -1)'
+echo 'Public IP: $(curl -s https://ipinfo.io/ip)'
+"
+```
+
+#### **1.3 記錄伺服器信息**
+
+**請填入您的伺服器信息**：
+
+**單環境配置**：
+```
+VPN_HOST = "_______________"  # 填入：GCP 外部 IP 或域名
+VPN_USER = "ubuntu"          # 通常是 ubuntu，如自訂請修改
+VPN_PORT = "22"              # SSH 連接埠，預設 22
+```
+
+**多環境配置**：
+```
+# 亞洲環境
+VPN_HOST_ASIA = "_______________"  # 填入：亞洲伺服器 IP
+VPN_USER_ASIA = "ubuntu"
+VPN_PORT_ASIA = "22"
+
+# 美國環境  
+VPN_HOST_US = "_______________"    # 填入：美國伺服器 IP
+VPN_USER_US = "ubuntu"
+VPN_PORT_US = "22"
+
+# 歐洲環境
+VPN_HOST_EU = "_______________"    # 填入：歐洲伺服器 IP
+VPN_USER_EU = "ubuntu" 
+VPN_PORT_EU = "22"
+```
+
+---
+
+### 🌐 步驟二：Cloudflare API 權杖獲取
+
+#### **2.1 登入 Cloudflare 並生成 API 權杖**
+
+1. **前往 Cloudflare 儀表板**：
+   ```
+   網址：https://dash.cloudflare.com
+   使用您的 Cloudflare 帳號登入
+   ```
+
+2. **導航到 API 權杖頁面**：
+   ```
+   點擊右上角頭像 → "我的設定檔" → "API 權杖" 頁籤
+   ```
+
+3. **建立自訂權杖**：
+   ```
+   點擊 "建立權杖" → "自訂權杖" → "開始使用"
+   ```
+
+#### **2.2 配置權杖權限**
+
+**權杖名稱**：`QWV-VPN-DNS-Manager`
+
+**權限設定**：
+```
+權限 #1：
+- 服務：Zone
+- 操作：DNS:Edit
+- 資源：Include - Specific zone - 917420.xyz
+
+權限 #2：
+- 服務：Zone  
+- 操作：Zone:Read
+- 資源：Include - Specific zone - 917420.xyz
+
+權限 #3：（可選，建議）
+- 服務：Zone
+- 操作：Zone Settings:Read
+- 資源：Include - Specific zone - 917420.xyz
+```
+
+**客戶端 IP 位址篩選**：（建議留空，允許所有 IP）
+
+**TTL（有效期）**：建議設定為 1 年
+
+#### **2.3 測試 API 權杖**
+
+```bash
+# 複製生成的權杖（形如：cf_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx）
+export CF_API_TOKEN="YOUR_ACTUAL_TOKEN_HERE"
+
+# 測試權杖有效性
+curl -X GET "https://api.cloudflare.com/client/v4/user/tokens/verify" \
+     -H "Authorization: Bearer $CF_API_TOKEN" \
+     -H "Content-Type: application/json"
+
+# 預期輸出：
+# {
+#   "success": true,
+#   "result": {
+#     "id": "...",
+#     "status": "active"
+#   }
+# }
+```
+
+#### **2.4 獲取 Zone ID（用於驗證）**
+
+```bash
+# 獲取您域名的 Zone ID
+curl -X GET "https://api.cloudflare.com/client/v4/zones?name=917420.xyz" \
+     -H "Authorization: Bearer $CF_API_TOKEN" \
+     -H "Content-Type: application/json"
+
+# 記錄返回的 Zone ID，用於後續驗證
+```
+
+#### **2.5 記錄 API 權杖信息**
+
+**請填入您的 Cloudflare 信息**：
+
+**單環境配置**：
+```
+CF_API_TOKEN = "_______________"  # 填入：剛才生成的 API 權杖
+CF_ZONE = "917420.xyz"           # 您的域名
+CF_SUBDOMAIN = "vpn"             # VPN 子域名（最終：vpn.917420.xyz）
+```
+
+**多環境配置**：
+```
+# 可以使用相同的 API 權杖，或為每個環境生成獨立權杖
+CF_API_TOKEN_ASIA = "_______________"  # 亞洲環境 API 權杖
+CF_API_TOKEN_US = "_______________"    # 美國環境 API 權杖  
+CF_API_TOKEN_EU = "_______________"    # 歐洲環境 API 權杖
+
+# DNS 域名配置
 VPN_DOMAIN_ASIA = "vpn-asia.917420.xyz"
 VPN_DOMAIN_US = "vpn-us.917420.xyz"
 VPN_DOMAIN_EU = "vpn-eu.917420.xyz"
 ```
 
-**Secrets 頁籤** (每個環境需要獨立設定):
+---
+
+### 🔑 步驟三：SSH 金鑰生成與部署
+
+#### **3.1 生成專用 SSH 金鑰**
+
+```bash
+# 創建 SSH 金鑰目錄（如果不存在）
+mkdir -p ~/.ssh
+
+# 生成 SSH 金鑰對
+ssh-keygen -t ed25519 -C "github-actions@917420.xyz" -f ~/.ssh/qwv_github_key
+
+# 提示輸入 passphrase 時，直接按 Enter（GitHub Actions 需要無密碼金鑰）
+# 預期輸出：
+# Generating public/private ed25519 key pair.
+# Enter passphrase (empty for no passphrase): [按 Enter]
+# Enter same passphrase again: [按 Enter]
+# Your identification has been saved in ~/.ssh/qwv_github_key
+# Your public key has been saved in ~/.ssh/qwv_github_key.pub
 ```
-# 亞洲環境
-VPN_HOST_ASIA = "ASIA_GCP_IP"
-VPN_USER_ASIA = "ubuntu"
-VPN_SSH_KEY_ASIA = "亞洲伺服器私鑰"
-CF_API_TOKEN_ASIA = "亞洲 Cloudflare Token"
 
-# 美國環境
-VPN_HOST_US = "US_GCP_IP"
-VPN_USER_US = "ubuntu"
-VPN_SSH_KEY_US = "美國伺服器私鑰"
-CF_API_TOKEN_US = "美國 Cloudflare Token"
+#### **3.2 獲取私鑰內容（用於 GitHub Secrets）**
 
-# 歐洲環境
-VPN_HOST_EU = "EU_GCP_IP"
-VPN_USER_EU = "ubuntu"
-VPN_SSH_KEY_EU = "歐洲伺服器私鑰"
-CF_API_TOKEN_EU = "歐洲 Cloudflare Token"
+```bash
+# 顯示私鑰內容
+echo "=== 私鑰內容（用於 GitHub Secrets）==="
+cat ~/.ssh/qwv_github_key
+
+# 預期輸出格式：
+# -----BEGIN OPENSSH PRIVATE KEY-----
+# b3BlbnNzaC1rZXktdjEAAAAABG5vbmUAAAAEbm9uZQAAAAAAAAABAAAAMwAAAAtz
+# c2gtZWQyNTUxOQAAACBQxXKp3gN+foooo3gN+foooo3gN+foooo3gN+foooo...
+# -----END OPENSSH PRIVATE KEY-----
+
+# 複製完整內容，包含 BEGIN 和 END 行
+```
+
+#### **3.3 部署公鑰到伺服器**
+
+**單環境部署**：
+```bash
+# 部署公鑰到伺服器
+ssh-copy-id -i ~/.ssh/qwv_github_key.pub ubuntu@YOUR_SERVER_IP
+
+# 或手動複製（如果 ssh-copy-id 不可用）
+cat ~/.ssh/qwv_github_key.pub | ssh ubuntu@YOUR_SERVER_IP "mkdir -p ~/.ssh && cat >> ~/.ssh/authorized_keys"
+```
+
+**多環境部署**：
+```bash
+# 部署到所有伺服器
+ssh-copy-id -i ~/.ssh/qwv_github_key.pub ubuntu@ASIA_SERVER_IP
+ssh-copy-id -i ~/.ssh/qwv_github_key.pub ubuntu@US_SERVER_IP  
+ssh-copy-id -i ~/.ssh/qwv_github_key.pub ubuntu@EU_SERVER_IP
+
+# 或為每個環境使用不同的金鑰（更安全）
+ssh-keygen -t ed25519 -C "github-actions-asia@917420.xyz" -f ~/.ssh/qwv_asia_key
+ssh-keygen -t ed25519 -C "github-actions-us@917420.xyz" -f ~/.ssh/qwv_us_key
+ssh-keygen -t ed25519 -C "github-actions-eu@917420.xyz" -f ~/.ssh/qwv_eu_key
+```
+
+#### **3.4 驗證 SSH 金鑰**
+
+```bash
+# 測試 SSH 連線（單環境）
+ssh -i ~/.ssh/qwv_github_key ubuntu@YOUR_SERVER_IP "echo 'SSH key verification successful for $(hostname)'"
+
+# 測試 Docker 權限
+ssh -i ~/.ssh/qwv_github_key ubuntu@YOUR_SERVER_IP "docker --version"
+
+# 多環境測試
+ssh -i ~/.ssh/qwv_github_key ubuntu@ASIA_SERVER_IP "echo 'Asia server: $(hostname)'"
+ssh -i ~/.ssh/qwv_github_key ubuntu@US_SERVER_IP "echo 'US server: $(hostname)'"
+ssh -i ~/.ssh/qwv_github_key ubuntu@EU_SERVER_IP "echo 'EU server: $(hostname)'"
+```
+
+#### **3.5 記錄 SSH 金鑰信息**
+
+**請確認您的 SSH 金鑰配置**：
+
+**單環境配置**：
+```
+VPN_SSH_KEY = """
+-----BEGIN OPENSSH PRIVATE KEY-----
+[填入步驟 3.2 中複製的完整私鑰內容]
+-----END OPENSSH PRIVATE KEY-----
+"""
+```
+
+**多環境配置**（如使用相同金鑰）：
+```
+VPN_SSH_KEY_ASIA = """[相同私鑰內容]"""
+VPN_SSH_KEY_US = """[相同私鑰內容]"""  
+VPN_SSH_KEY_EU = """[相同私鑰內容]"""
+```
+
+**多環境配置**（如使用不同金鑰）：
+```bash
+# 分別獲取各環境的私鑰
+echo "=== Asia SSH Key ==="
+cat ~/.ssh/qwv_asia_key
+
+echo "=== US SSH Key ==="  
+cat ~/.ssh/qwv_us_key
+
+echo "=== EU SSH Key ==="
+cat ~/.ssh/qwv_eu_key
 ```
 
 ---
 
-### 2️⃣ GCP 伺服器設定要求
+### ⚙️ 步驟四：.env 環境變數配置
 
-#### **單環境 (1 台伺服器)**
+#### **4.1 創建本地 .env 文件**
+
 ```bash
-# 1. 建立 GCP 虛擬機
-gcloud compute instances create qwv-vpn-single \
-    --zone=asia-east1-a \
-    --machine-type=e2-micro \
-    --image-family=ubuntu-2204-lts \
-    --image-project=ubuntu-os-cloud \
-    --boot-disk-size=10GB
+# 在專案根目錄下創建 .env 文件
+cd QWV  # 確保在專案根目錄
+cp env.example .env
 
-# 2. 開放防火牆
-gcloud compute firewall-rules create allow-wireguard \
-    --allow udp:51820 \
-    --source-ranges 0.0.0.0/0 \
-    --description "Allow WireGuard VPN"
-
-# 3. 獲取外部 IP
-gcloud compute instances describe qwv-vpn-single \
-    --zone=asia-east1-a \
-    --format="value(networkInterfaces[0].accessConfigs[0].natIP)"
+# 檢查 .env 模板內容
+cat env.example
 ```
 
-#### **多環境 (3 台伺服器)**
+#### **4.2 填寫 .env 配置值**
+
+**編輯 .env 文件**：
 ```bash
-# 亞洲區域
-gcloud compute instances create qwv-vpn-asia \
-    --zone=asia-east1-a \
-    --machine-type=e2-micro \
-    --image-family=ubuntu-2204-lts \
-    --image-project=ubuntu-os-cloud
-
-# 美國區域
-gcloud compute instances create qwv-vpn-us \
-    --zone=us-central1-a \
-    --machine-type=e2-micro \
-    --image-family=ubuntu-2204-lts \
-    --image-project=ubuntu-os-cloud
-
-# 歐洲區域
-gcloud compute instances create qwv-vpn-eu \
-    --zone=europe-west1-a \
-    --machine-type=e2-micro \
-    --image-family=ubuntu-2204-lts \
-    --image-project=ubuntu-os-cloud
-
-# 為每台伺服器都需要開放 UDP 51820 連接埠
+# 使用您偏好的編輯器
+nano .env
+# 或
+vim .env
+# 或
+code .env
 ```
 
-**伺服器需求**:
-- **作業系統**: Ubuntu 22.04 LTS
-- **規格**: 最低 1 vCPU, 1GB RAM, 10GB 磁碟
-- **網路**: 外部 IP + UDP 51820 開放
-- **權限**: SSH 存取 + Docker 安裝權限
+**單環境 .env 配置範例**：
+```bash
+# Cloudflare DDNS 配置
+CF_API_TOKEN=cf_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+CF_ZONE=917420.xyz
+CF_SUBDOMAIN=vpn
+
+# WireGuard 配置
+PEERS=laptop,phone,tablet
+SERVERURL=vpn.917420.xyz
+SERVERPORT=51820
+INTERNAL_SUBNET=10.13.13.0
+
+# 安全配置
+PUID=1000
+PGID=1000
+TZ=Asia/Taipei
+
+# 可選配置
+ALLOWEDIPS=0.0.0.0/0
+LOG_CONFS=true
+```
+
+**多環境 .env 配置範例**（每個伺服器獨立配置）：
+
+**亞洲伺服器 .env**：
+```bash
+CF_API_TOKEN=cf_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+CF_ZONE=917420.xyz
+CF_SUBDOMAIN=vpn-asia
+
+PEERS=laptop,phone,tablet
+SERVERURL=vpn-asia.917420.xyz
+SERVERPORT=51820
+INTERNAL_SUBNET=10.13.13.0
+
+PUID=1000
+PGID=1000
+TZ=Asia/Taipei
+ALLOWEDIPS=0.0.0.0/0
+LOG_CONFS=true
+```
+
+**美國伺服器 .env**：
+```bash
+CF_API_TOKEN=cf_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+CF_ZONE=917420.xyz  
+CF_SUBDOMAIN=vpn-us
+
+PEERS=laptop,phone,tablet
+SERVERURL=vpn-us.917420.xyz
+SERVERPORT=51820
+INTERNAL_SUBNET=10.14.14.0  # 不同子網避免衝突
+
+PUID=1000
+PGID=1000
+TZ=America/New_York
+ALLOWEDIPS=0.0.0.0/0
+LOG_CONFS=true
+```
+
+**歐洲伺服器 .env**：
+```bash
+CF_API_TOKEN=cf_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+CF_ZONE=917420.xyz
+CF_SUBDOMAIN=vpn-eu
+
+PEERS=laptop,phone,tablet  
+SERVERURL=vpn-eu.917420.xyz
+SERVERPORT=51820
+INTERNAL_SUBNET=10.15.15.0  # 不同子網避免衝突
+
+PUID=1000
+PGID=1000
+TZ=Europe/London
+ALLOWEDIPS=0.0.0.0/0
+LOG_CONFS=true
+```
+
+#### **4.3 驗證 .env 配置**
+
+```bash
+# 檢查 .env 文件語法
+./scripts/validate.sh
+
+# 檢查環境變數載入
+source .env
+echo "CF_API_TOKEN: ${CF_API_TOKEN:0:10}..."  # 只顯示前 10 字符
+echo "CF_ZONE: $CF_ZONE"
+echo "CF_SUBDOMAIN: $CF_SUBDOMAIN"
+echo "SERVERURL: $SERVERURL"
+
+# 測試 Docker Compose 配置
+docker compose config
+```
+
+#### **4.4 環境變數安全檢查**
+
+```bash
+# 確保 .env 文件權限正確
+chmod 600 .env
+ls -la .env
+# 預期輸出：-rw------- 1 user user ... .env
+
+# 確保 .env 不會被提交到 Git
+git status
+# .env 應該不在 staged files 中（被 .gitignore 忽略）
+
+# 驗證 .gitignore 設定
+grep "^\.env$" .gitignore
+# 預期輸出：.env
+```
 
 ---
 
-### 3️⃣ 客戶端連線步驟
+### 💻 步驟五：GitHub Variables 和 Secrets 配置
 
-#### **步驟 1: 觸發自動部署**
+#### **5.1 前往 GitHub 專案設定**
+
+1. **開啟 GitHub 專案頁面**：
+   ```
+   https://github.com/rich7420/QWV
+   ```
+
+2. **進入設定頁面**：
+   ```
+   點擊 "Settings" 選項卡（在專案頁面頂部）
+   ```
+
+3. **進入 Actions 配置**：
+   ```
+   左側選單 → "Secrets and variables" → "Actions"
+   ```
+
+#### **5.2 配置 Variables（公開配置）**
+
+**點擊 "Variables" 頁籤**
+
+**單環境 Variables 配置**：
+```
+Name: VPN_DOMAIN
+Value: vpn.917420.xyz
+Description: Primary VPN domain name
+```
+
+**多環境 Variables 配置**：
+```
+Name: VPN_DOMAIN_ASIA
+Value: vpn-asia.917420.xyz
+Description: Asia region VPN domain
+
+Name: VPN_DOMAIN_US  
+Value: vpn-us.917420.xyz
+Description: US region VPN domain
+
+Name: VPN_DOMAIN_EU
+Value: vpn-eu.917420.xyz
+Description: EU region VPN domain
+```
+
+#### **5.3 配置 Secrets（敏感信息）**
+
+**點擊 "Secrets" 頁籤**
+
+**單環境 Secrets 配置**：
+
+| Secret 名稱 | 值來源 | 填入值 |
+|------------|--------|--------|
+| `VPN_HOST` | 步驟 1.3 | `YOUR_SERVER_IP` |
+| `VPN_USER` | 步驟 1.3 | `ubuntu` |
+| `VPN_SSH_KEY` | 步驟 3.5 | `-----BEGIN OPENSSH PRIVATE KEY-----\n...` |
+| `VPN_PORT` | 步驟 1.3 | `22` (可選，預設值) |
+| `CF_API_TOKEN` | 步驟 2.5 | `cf_xxxxxxxxxxxxxxxxxxxxxxxx` |
+
+**多環境 Secrets 配置**：
+
+**🌏 亞洲環境**：
+| Secret 名稱 | 值來源 | 填入值 |
+|------------|--------|--------|
+| `VPN_HOST_ASIA` | 步驟 1.3 | `ASIA_SERVER_IP` |
+| `VPN_USER_ASIA` | 步驟 1.3 | `ubuntu` |
+| `VPN_SSH_KEY_ASIA` | 步驟 3.5 | `-----BEGIN OPENSSH PRIVATE KEY-----\n...` |
+| `VPN_PORT_ASIA` | 步驟 1.3 | `22` (可選) |
+| `CF_API_TOKEN_ASIA` | 步驟 2.5 | `cf_xxxxxxxxxxxxxxxxxxxxxxxx` |
+
+**🇺🇸 美國環境**：
+| Secret 名稱 | 值來源 | 填入值 |
+|------------|--------|--------|
+| `VPN_HOST_US` | 步驟 1.3 | `US_SERVER_IP` |
+| `VPN_USER_US` | 步驟 1.3 | `ubuntu` |
+| `VPN_SSH_KEY_US` | 步驟 3.5 | `-----BEGIN OPENSSH PRIVATE KEY-----\n...` |
+| `VPN_PORT_US` | 步驟 1.3 | `22` (可選) |
+| `CF_API_TOKEN_US` | 步驟 2.5 | `cf_xxxxxxxxxxxxxxxxxxxxxxxx` |
+
+**🇪🇺 歐洲環境**：
+| Secret 名稱 | 值來源 | 填入值 |
+|------------|--------|--------|
+| `VPN_HOST_EU` | 步驟 1.3 | `EU_SERVER_IP` |
+| `VPN_USER_EU` | 步驟 1.3 | `ubuntu` |
+| `VPN_SSH_KEY_EU` | 步驟 3.5 | `-----BEGIN OPENSSH PRIVATE KEY-----\n...` |
+| `VPN_PORT_EU` | 步驟 1.3 | `22` (可選) |
+| `CF_API_TOKEN_EU` | 步驟 2.5 | `cf_xxxxxxxxxxxxxxxxxxxxxxxx` |
+
+#### **5.4 配置檢查清單**
+
+**✅ 配置完成檢查**：
+
+**Variables 檢查**：
+- [ ] 單環境：VPN_DOMAIN 已設定
+- [ ] 多環境：VPN_DOMAIN_ASIA, VPN_DOMAIN_US, VPN_DOMAIN_EU 已設定
+- [ ] 域名格式正確（如：vpn.917420.xyz）
+
+**Secrets 檢查**：
+- [ ] 所有 VPN_HOST_* 使用正確的伺服器 IP 地址
+- [ ] 所有 VPN_USER_* 使用正確的用戶名（通常是 ubuntu）
+- [ ] 所有 VPN_SSH_KEY_* 包含完整的私鑰（含 BEGIN/END 行）
+- [ ] 所有 CF_API_TOKEN_* 使用有效的 Cloudflare API 權杖
+- [ ] 可選：VPN_PORT_* 設定正確的 SSH 連接埠
+
+#### **5.5 配置驗證測試**
+
 ```bash
-# 推送程式碼到 GitHub 觸發自動部署
+# 本地驗證所有 SSH 連線
+# 單環境測試
+ssh -i ~/.ssh/qwv_github_key ubuntu@YOUR_SERVER_IP "echo 'Single environment OK'"
+
+# 多環境測試  
+ssh -i ~/.ssh/qwv_github_key ubuntu@ASIA_SERVER_IP "echo 'Asia environment OK'"
+ssh -i ~/.ssh/qwv_github_key ubuntu@US_SERVER_IP "echo 'US environment OK'"
+ssh -i ~/.ssh/qwv_github_key ubuntu@EU_SERVER_IP "echo 'EU environment OK'"
+
+# 驗證 Cloudflare API 權杖
+curl -X GET "https://api.cloudflare.com/client/v4/user/tokens/verify" \
+     -H "Authorization: Bearer YOUR_CF_API_TOKEN" \
+     -H "Content-Type: application/json"
+```
+
+---
+
+## 🚀 部署測試
+
+### 1️⃣ 觸發 GitHub Actions 部署
+
+#### **步驟 1.1：推送代碼觸發自動部署**
+
+```bash
+# 確保在專案根目錄
+cd QWV
+
+# 提交小變更觸發部署
+echo "# 部署測試 $(date)" >> README.md
+git add README.md  
+git commit -m "test: trigger GitHub Actions deployment"
 git push origin main
-
-# 或透過 GitHub Actions UI 手動觸發:
-# GitHub → Actions → "Multi-Environment QWV VPN Deployment" → Run workflow
 ```
 
-#### **步驟 2: 獲取客戶端配置**
+#### **步驟 1.2：監控部署過程**
+
+1. **前往 GitHub Actions 頁面**：
+   ```
+   https://github.com/rich7420/QWV/actions
+   ```
+
+2. **查看最新的工作流程執行**：
+   - 點擊最新的 "Multi-Environment QWV VPN Deployment" 工作流程
+   - 觀察每個步驟的執行狀態
+
+3. **部署模式檢查**：
+   - 查看 "Detect Deployment Mode" 步驟
+   - 確認檢測到正確的部署模式（single 或 multi）
+
+#### **步驟 1.3：手動選擇部署環境**
+
+**如果您配置了多環境但想選擇性部署**：
+
+1. **前往 Actions 頁面**
+2. **點擊 "Multi-Environment QWV VPN Deployment"**
+3. **點擊 "Run workflow" 按鈕**
+4. **選擇部署目標**：
+   - `auto`: 自動檢測（預設）
+   - `single`: 強制單環境模式
+   - `asia`: 只部署亞洲環境
+   - `us`: 只部署美國環境
+   - `eu`: 只部署歐洲環境
+   - `all`: 部署所有多環境
+
+---
+
+### 2️⃣ 驗證部署結果
+
+#### **步驟 2.1：檢查服務狀態**
+
 ```bash
-# SSH 登入伺服器
+# SSH 到伺服器檢查服務
 ssh ubuntu@YOUR_SERVER_IP
 
 # 進入專案目錄
@@ -157,40 +703,104 @@ cd QWV
 # 檢查服務狀態
 ./scripts/manage.sh status
 
-# 生成客戶端 QR Code (手機用)
-./scripts/manage.sh qr phone
-
-# 獲取設定檔 (電腦用)
-./scripts/manage.sh qr laptop
-# 設定檔位置: config/peer_laptop/peer_laptop.conf
+# 預期輸出：
+# 🔍 服務狀態：
+# ✅ wireguard: Up 2 minutes
+# ✅ cloudflare-ddns: Up 2 minutes
 ```
 
-#### **步驟 3: 客戶端設備設定**
+#### **步驟 2.2：檢查 DNS 解析**
 
-**手機 (Android/iOS)**:
-1. 下載 WireGuard 應用程式
-2. 點擊 "+" → "從 QR Code 建立"
-3. 掃描伺服器生成的 QR Code
-4. 命名隧道（如 "917420 VPN"）
-5. 啟動連線
-
-**電腦 (Windows/macOS/Linux)**:
-1. 下載 WireGuard 客戶端
-2. 複製設定檔到本機:
-   ```bash
-   scp ubuntu@YOUR_SERVER_IP:~/QWV/config/peer_laptop/peer_laptop.conf ~/wireguard.conf
-   ```
-3. 在 WireGuard 中匯入設定檔
-4. 啟動連線
-
-#### **步驟 4: 連線驗證**
 ```bash
-# 連線前檢查原始 IP
-curl https://ipinfo.io/ip
+# 檢查 DNS 記錄更新
+nslookup vpn.917420.xyz
+# 預期輸出：應解析到伺服器 IP
+
+# 多環境檢查
+nslookup vpn-asia.917420.xyz
+nslookup vpn-us.917420.xyz  
+nslookup vpn-eu.917420.xyz
+
+# 使用 dig 檢查 TTL
+dig vpn.917420.xyz
+```
+
+#### **步驟 2.3：生成客戶端配置**
+
+```bash
+# 生成手機 QR Code
+./scripts/manage.sh qr phone
+
+# 生成筆電配置
+./scripts/manage.sh qr laptop
+
+# 檢查配置文件
+ls -la config/
+cat config/peer_phone/peer_phone.conf
+```
+
+---
+
+## 📱 客戶端連線測試
+
+### 3️⃣ 手機客戶端設定
+
+#### **步驟 3.1：安裝 WireGuard 應用**
+
+- **Android**: [Google Play Store](https://play.google.com/store/apps/details?id=com.wireguard.android)
+- **iOS**: [App Store](https://apps.apple.com/app/wireguard/id1441195209)
+
+#### **步驟 3.2：導入配置**
+
+1. **開啟 WireGuard 應用**
+2. **點擊 "+" 按鈕**
+3. **選擇 "從 QR 碼建立"**
+4. **掃描伺服器生成的 QR Code**
+5. **為隧道命名**（如：917420 VPN - Asia）
+6. **點擊 "建立隧道"**
+
+#### **步驟 3.3：測試連線**
+
+```bash
+# 在手機上連線前，檢查原始 IP
+# 使用瀏覽器訪問：https://ipinfo.io
 
 # 啟動 VPN 連線
 
-# 連線後檢查新 IP (應該是伺服器 IP)
+# 再次檢查 IP，應該顯示伺服器 IP
+# 訪問：https://ipinfo.io
+```
+
+---
+
+### 4️⃣ 桌面客戶端設定
+
+#### **步驟 4.1：下載配置文件**
+
+```bash
+# 從伺服器下載配置文件
+scp ubuntu@YOUR_SERVER_IP:~/QWV/config/peer_laptop/peer_laptop.conf ~/wireguard-917420.conf
+
+# 檢查配置文件內容
+cat ~/wireguard-917420.conf
+```
+
+#### **步驟 4.2：安裝 WireGuard 客戶端**
+
+- **Windows**: [官方下載](https://www.wireguard.com/install/)
+- **macOS**: [Mac App Store](https://apps.apple.com/app/wireguard/id1451685025) 或 Homebrew：`brew install wireguard-tools`
+- **Linux**: `sudo apt install wireguard` (Ubuntu/Debian)
+
+#### **步驟 4.3：導入配置並測試**
+
+1. **開啟 WireGuard 客戶端**
+2. **點擊 "Import tunnel(s) from file"**
+3. **選擇下載的 .conf 文件**
+4. **啟動隧道**
+
+**驗證連線**：
+```bash
+# 檢查 IP 變化
 curl https://ipinfo.io/ip
 
 # 測試 DNS 解析
@@ -198,6 +808,9 @@ nslookup google.com
 
 # 測試網路連通性
 ping -c 4 8.8.8.8
+
+# 測試速度（可選）
+speedtest-cli
 ```
 
 ---
@@ -1125,7 +1738,82 @@ grep "Destination Host Unreachable" ping_test.log
 
 請在測試過程中填寫此表格：
 
-### 環境資訊
+### 🛠️ 配置獲取步驟驗證
+
+#### **步驟一：伺服器信息收集**
+- [ ] GCP 虛擬機創建：`[ ] 完成` `[ ] 跳過（已有）`
+  - [ ] 外部 IP 獲取：`_________________`
+  - [ ] 防火牆規則設定：`[ ] 完成` UDP 51820 開放：`[ ] 確認`
+- [ ] SSH 連線測試：`[ ] 通過` `[ ] 失敗` 錯誤：`_________`
+- [ ] 伺服器基本信息檢查：`[ ] 通過` 
+  - [ ] OS 版本：`_________________`
+  - [ ] 可用記憶體：`_________________`
+  - [ ] 可用磁碟：`_________________`
+
+#### **步驟二：Cloudflare API 權杖獲取**
+- [ ] Cloudflare 帳號登入：`[ ] 完成`
+- [ ] API 權杖創建：`[ ] 完成` 權杖名稱：`_________________`
+- [ ] 權限配置：`[ ] 完成`
+  - [ ] DNS:Edit 權限：`[ ] 設定` 
+  - [ ] Zone:Read 權限：`[ ] 設定`
+  - [ ] Zone Settings:Read 權限：`[ ] 設定` (可選)
+- [ ] API 權杖測試：`[ ] 通過` `[ ] 失敗` 錯誤：`_________`
+- [ ] Zone ID 獲取：`[ ] 完成` Zone ID：`_________________`
+
+#### **步驟三：SSH 金鑰生成與部署**
+- [ ] SSH 金鑰生成：`[ ] 完成` 金鑰類型：`ed25519` `[ ] rsa`
+- [ ] 私鑰內容獲取：`[ ] 完成` 格式檢查：`[ ] 包含 BEGIN/END 行`
+- [ ] 公鑰部署到伺服器：`[ ] 完成` `[ ] 失敗` 錯誤：`_________`
+  - [ ] 單環境部署：`[ ] 完成` IP：`_________________`
+  - [ ] 多環境部署：
+    - [ ] 亞洲伺服器：`[ ] 完成` IP：`_________________`
+    - [ ] 美國伺服器：`[ ] 完成` IP：`_________________`
+    - [ ] 歐洲伺服器：`[ ] 完成` IP：`_________________`
+- [ ] SSH 金鑰驗證：`[ ] 通過` `[ ] 失敗` 錯誤：`_________`
+- [ ] Docker 權限測試：`[ ] 通過` `[ ] 失敗` 錯誤：`_________`
+
+#### **步驟四：.env 環境變數配置**
+- [ ] .env 文件創建：`[ ] 完成` 來源：`env.example`
+- [ ] 配置值填寫：`[ ] 完成`
+  - [ ] CF_API_TOKEN：`[ ] 填入` 格式：`cf_xxxxxxx...`
+  - [ ] CF_ZONE：`[ ] 填入` 值：`_________________`
+  - [ ] CF_SUBDOMAIN：`[ ] 填入` 值：`_________________`
+  - [ ] SERVERURL：`[ ] 填入` 值：`_________________`
+  - [ ] PEERS：`[ ] 填入` 值：`_________________`
+- [ ] .env 配置驗證：`[ ] 通過` `[ ] 失敗` 錯誤：`_________`
+- [ ] Docker Compose 配置測試：`[ ] 通過` `[ ] 失敗` 錯誤：`_________`
+- [ ] 文件權限設定：`[ ] 完成` 權限：`600` `[ ] 確認`
+- [ ] Git 忽略檢查：`[ ] 確認` .env 不在 Git 追蹤中：`[ ] 是`
+
+#### **步驟五：GitHub Variables 和 Secrets 配置**
+
+**Variables 配置驗證**：
+- [ ] GitHub 專案設定訪問：`[ ] 完成`
+- [ ] Variables 頁籤配置：`[ ] 完成`
+  - [ ] 單環境：VPN_DOMAIN：`[ ] 設定` 值：`_________________`
+  - [ ] 多環境：
+    - [ ] VPN_DOMAIN_ASIA：`[ ] 設定` 值：`_________________`
+    - [ ] VPN_DOMAIN_US：`[ ] 設定` 值：`_________________`  
+    - [ ] VPN_DOMAIN_EU：`[ ] 設定` 值：`_________________`
+
+**Secrets 配置驗證**：
+- [ ] Secrets 頁籤配置：`[ ] 完成`
+- [ ] 單環境 Secrets：`[ ] 完成`
+  - [ ] VPN_HOST：`[ ] 設定` 來源：`步驟 1.3`
+  - [ ] VPN_USER：`[ ] 設定` 來源：`步驟 1.3`
+  - [ ] VPN_SSH_KEY：`[ ] 設定` 來源：`步驟 3.5` 格式：`[ ] 完整私鑰`
+  - [ ] VPN_PORT：`[ ] 設定` `[ ] 使用預設` 值：`_________`
+  - [ ] CF_API_TOKEN：`[ ] 設定` 來源：`步驟 2.5`
+- [ ] 多環境 Secrets：`[ ] 完成` `[ ] 跳過`
+  - [ ] 亞洲環境 Secrets：`[ ] 完成` (VPN_HOST_ASIA, VPN_USER_ASIA, etc.)
+  - [ ] 美國環境 Secrets：`[ ] 完成` (VPN_HOST_US, VPN_USER_US, etc.)  
+  - [ ] 歐洲環境 Secrets：`[ ] 完成` (VPN_HOST_EU, VPN_USER_EU, etc.)
+
+**配置驗證測試**：
+- [ ] 本地 SSH 連線測試：`[ ] 通過` `[ ] 失敗` 錯誤：`_________`
+- [ ] Cloudflare API 權杖驗證：`[ ] 通過` `[ ] 失敗` 錯誤：`_________`
+
+### 📋 環境資訊
 - [ ] 伺服器作業系統：`_________________`
 - [ ] 伺服器規格：`_________________`
 - [ ] 網路環境：`[ ] 無 CGNAT` `[ ] 有 CGNAT`
@@ -1254,7 +1942,116 @@ grep "Destination Host Unreachable" ping_test.log
 
 ## 🚨 常見測試問題與解決方案
 
-### 問題 1：專案驗證失敗
+### 🔧 配置獲取階段問題
+
+#### 問題 1：GCP 伺服器 IP 獲取失敗
+```bash
+# 症狀：gcloud 指令無法獲取外部 IP
+# 原因：未安裝 gcloud CLI 或未登入
+# 解決：
+curl -O https://dl.google.com/dl/cloudsdk/channels/rapid/downloads/google-cloud-cli-linux-x86_64.tar.gz
+tar -xf google-cloud-cli-linux-x86_64.tar.gz
+./google-cloud-sdk/install.sh
+gcloud auth login
+gcloud config set project YOUR_PROJECT_ID
+
+# 手動獲取 IP（替代方案）：
+# 登入 GCP Console → Compute Engine → VM instances → External IP 欄位
+```
+
+#### 問題 2：Cloudflare API 權杖權限不足
+```bash
+# 症狀：API 權杖測試返回 "insufficient_scope" 錯誤
+# 解決：重新創建權杖，確保包含所有必要權限
+curl -X GET "https://api.cloudflare.com/client/v4/user/tokens/verify" \
+     -H "Authorization: Bearer $CF_API_TOKEN" \
+     -H "Content-Type: application/json"
+
+# 檢查權限是否包含：
+# - Zone:DNS:Edit
+# - Zone:Zone:Read
+# - Zone:Zone Settings:Read (可選)
+```
+
+#### 問題 3：SSH 金鑰格式錯誤
+```bash
+# 症狀：GitHub Actions 中 SSH 連線失敗，顯示 "invalid format"
+# 解決：確保私鑰格式正確
+echo "檢查私鑰是否包含完整的 BEGIN 和 END 行："
+cat ~/.ssh/qwv_github_key | head -1  # 應顯示 -----BEGIN OPENSSH PRIVATE KEY-----
+cat ~/.ssh/qwv_github_key | tail -1  # 應顯示 -----END OPENSSH PRIVATE KEY-----
+
+# 重新生成金鑰（如果格式有問題）：
+ssh-keygen -t ed25519 -C "github-actions@917420.xyz" -f ~/.ssh/qwv_github_key_new
+```
+
+#### 問題 4：SSH 公鑰部署失敗
+```bash
+# 症狀：ssh-copy-id 失敗或 SSH 連線被拒絕
+# 解決步驟：
+
+# 1. 確認伺服器 SSH 服務運行
+ssh ubuntu@YOUR_SERVER_IP "sudo systemctl status ssh"
+
+# 2. 手動添加公鑰
+cat ~/.ssh/qwv_github_key.pub
+# 複製輸出，然後在伺服器上執行：
+ssh ubuntu@YOUR_SERVER_IP
+mkdir -p ~/.ssh
+echo "PASTE_PUBLIC_KEY_HERE" >> ~/.ssh/authorized_keys
+chmod 700 ~/.ssh
+chmod 600 ~/.ssh/authorized_keys
+
+# 3. 測試連線
+ssh -i ~/.ssh/qwv_github_key ubuntu@YOUR_SERVER_IP "echo 'Test successful'"
+```
+
+#### 問題 5：.env 文件配置錯誤
+```bash
+# 症狀：Docker Compose 啟動失敗或 DDNS 不工作
+# 解決：逐項檢查環境變數
+
+# 檢查 .env 文件語法
+cat .env | grep -v '^#' | grep -v '^$'  # 顯示所有非註釋行
+
+# 常見錯誤：
+# - CF_API_TOKEN 格式錯誤（應以 cf_ 開頭）
+# - CF_ZONE 包含不正確的域名
+# - SERVERURL 與實際域名不符
+# - PEERS 列表格式錯誤（應用逗號分隔）
+
+# 驗證 Cloudflare 連線：
+source .env
+curl -X GET "https://api.cloudflare.com/client/v4/zones?name=$CF_ZONE" \
+     -H "Authorization: Bearer $CF_API_TOKEN" \
+     -H "Content-Type: application/json"
+```
+
+#### 問題 6：GitHub Secrets 配置檢測失敗
+```bash
+# 症狀：GitHub Actions 無法檢測到正確的部署模式
+# 解決：
+
+# 1. 檢查 Variables 和 Secrets 的命名是否正確
+# Variables 應為：VPN_DOMAIN, VPN_DOMAIN_ASIA, VPN_DOMAIN_US, VPN_DOMAIN_EU
+# Secrets 應為：VPN_HOST, VPN_USER, VPN_SSH_KEY, CF_API_TOKEN (單環境)
+#             VPN_HOST_ASIA, VPN_USER_ASIA, VPN_SSH_KEY_ASIA, CF_API_TOKEN_ASIA (多環境)
+
+# 2. 確認 VPN_SSH_KEY 包含完整私鑰內容
+# 正確格式：
+# -----BEGIN OPENSSH PRIVATE KEY-----
+# [私鑰內容]
+# -----END OPENSSH PRIVATE KEY-----
+
+# 3. 測試 GitHub Actions 手動觸發
+# 前往 GitHub → Actions → Run workflow → 選擇 "auto" 模式
+```
+
+---
+
+### 🐛 部署階段問題
+
+#### 問題 7：專案驗證失敗
 ```bash
 # 症狀：./scripts/validate.sh 回報錯誤
 # 解決步驟：
