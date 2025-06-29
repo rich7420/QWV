@@ -9,7 +9,7 @@ echo "🚀 QWV - WireGuard VPN 伺服器設定腳本"
 echo "========================================"
 
 # 檢查是否為 root 用戶
-if [[ $EUID -eq 0 ]]; then
+if [[ "$EUID" -eq 0 ]]; then
    echo "❌ 請勿以 root 用戶執行此腳本，請使用一般用戶" 
    exit 1
 fi
@@ -32,7 +32,7 @@ sudo apt install -y curl wget ufw git
 
 # 將當前用戶加入 docker 群組
 echo "👤 設定 Docker 權限..."
-sudo usermod -aG docker $USER
+sudo usermod -aG docker "$USER"
 
 # 設定 UFW 防火牆
 echo "🔥 設定防火牆..."
