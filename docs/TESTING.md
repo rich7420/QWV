@@ -1308,7 +1308,7 @@ cd QWV-QuickWireguardVpn
 ./scripts/manage.sh validate
 
 # 或使用測試腳本
-./test-commands.sh validate
+./tools/test-commands.sh validate
 ```
 
 **預期輸出**：
@@ -1459,7 +1459,7 @@ cd QWV-QuickWireguardVpn
 echo $?  # 0 表示成功，1 表示有問題
 
 # 使用測試腳本進行分階段驗證
-./test-commands.sh 3-verify
+./tools/test-commands.sh 3-verify
 ```
 
 ## 🌐 階段三：Cloudflare 設定與驗證
@@ -2798,7 +2798,7 @@ ssh user@host "df -h"
 如果在測試過程中遇到問題，請檢查：
 1. 本文檔的故障排除章節
 2. README.md 的故障排除指南
-3. 規劃書.md 的詳細技術分析
+3. 參考本專案的完整文檔和技術分析
 4. 或提交 GitHub Issue 尋求協助
 
 ---

@@ -50,7 +50,8 @@ validate_files() {
         "scripts/setup.sh"
         "scripts/manage.sh"
         "README.md"
-        "規劃書.md"
+        "docs/TESTING.md"
+        "docs/MULTI-ENVIRONMENT.md"
         ".gitignore"
         ".github/workflows/deploy.yml"
     )
@@ -229,11 +230,11 @@ validate_documentation() {
         return 1
     fi
     
-    # 檢查規劃書
-    if [ -f "規劃書.md" ]; then
-        print_success "規劃書.md 存在"
+    # 檢查測試文檔
+    if [ -f "docs/TESTING.md" ]; then
+        print_success "TESTING.md 存在於 docs/ 目錄"
     else
-        print_warning "規劃書.md 不存在"
+        print_warning "TESTING.md 不存在於 docs/ 目錄"
     fi
     echo ""
 }

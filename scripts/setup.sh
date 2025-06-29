@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # QWV (QuickWireguardVpn) 伺服器初始設定腳本
-# 根據規劃書第2部分的前置作業要求
+# QWV VPN 前置作業環境設定
 
 set -e
 

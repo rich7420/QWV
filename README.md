@@ -28,21 +28,44 @@ QWV is a complete enterprise-grade WireGuard VPN solution that adopts modern Dev
 
 ```
 QWV-QuickWireguardVpn/
-├── 📋 specification.md          # Complete technical documentation and design concepts
+├── 📝 README.md                # Project documentation
 ├── 🔧 docker-compose.yml        # Service orchestration configuration
 ├── ⚙️ env.example              # Environment variable template
-├── 📝 README.md                # Project documentation
 ├── 🔐 .gitignore               # Git ignore configuration
-├── 🤖 .github/workflows/       # GitHub Actions workflows
-│   └── deploy.yml              # Automated deployment script
+├── 📄 LICENSE                  # MIT License
+├── 📂 docs/                    # Documentation files
+│   ├── TESTING.md             # Comprehensive testing guide
+│   └── MULTI-ENVIRONMENT.md   # Multi-environment deployment guide
+├── 🔧 tools/                   # Development tools
+│   └── test-commands.sh       # Testing commands and utilities
 ├── 📂 scripts/                 # Management scripts
 │   ├── setup.sh               # Initial environment setup
 │   ├── manage.sh               # Service management tool
 │   └── validate.sh             # Project validation script
+├── 🤖 .github/workflows/       # GitHub Actions workflows
+│   └── deploy.yml              # Automated deployment script
 ├── 📁 config/                  # WireGuard configuration files (auto-generated)
 ├── 💾 backup/                  # Backup files directory
 └── 📊 logs/                    # Log files directory
 ```
+
+### Directory Structure Organization
+
+**📂 Root Level**: Core configuration and essential files
+- Configuration files (`docker-compose.yml`, `env.example`)
+- Project essentials (`README.md`, `LICENSE`, `.gitignore`)
+
+**📚 docs/**: All documentation files organized together
+- Testing guide and multi-environment deployment documentation
+- Keeps documentation separate from configuration
+
+**🔧 tools/**: Development and testing utilities
+- Testing scripts and development tools
+- Separates utilities from core management scripts
+
+**📂 scripts/**: Core management scripts for daily operations
+- Setup, management, and validation scripts
+- Essential for service operations
 
 ### Core Service Architecture
 
@@ -68,7 +91,7 @@ QWV now supports professional multi-environment deployment across regions:
 - **Single Environment** (Recommended for beginners): Choose one region
 - **Multi-Environment** (Advanced): Deploy to multiple regions for global coverage
 
-> 📖 **For multi-environment setup**, see: **[Multi-Environment Deployment Guide](MULTI-ENVIRONMENT.md)**
+> 📖 **For multi-environment setup**, see: **[Multi-Environment Deployment Guide](docs/MULTI-ENVIRONMENT.md)**
 
 ### ⚠️ Important: CGNAT Detection
 
@@ -895,7 +918,7 @@ When using GitHub Actions UI (`Actions` → `Run workflow`):
 | `eu` | Deploy only to EU environment | Target specific region |
 | `all` | Deploy to all multi-environments | Deploy to all regions at once |
 
-> 📖 **Complete multi-environment guide**: [MULTI-ENVIRONMENT.md](MULTI-ENVIRONMENT.md)
+> 📖 **Complete multi-environment guide**: [MULTI-ENVIRONMENT.md](docs/MULTI-ENVIRONMENT.md)
 
 ### SSH Key Preparation Steps
 
@@ -1153,7 +1176,6 @@ sudo sysctl -p
 
 ```
 QWV-QuickWireguardVpn/
-├── 📋 specification.md          # Complete technical documentation (603 lines of professional analysis)
 ├── 🔧 docker-compose.yml        # Service orchestration (WireGuard + DDNS)
 ├── ⚙️ env.example              # Environment variable template (security configuration)
 ├── 🔐 .gitignore               # Git ignore rules (protect sensitive information)
@@ -1299,8 +1321,7 @@ This project's implementation benefits from the following excellent open source 
 
 ## 📖 Further Reading
 
-- 📋 **[specification.md](specification.md)** - Complete technical analysis and design concepts (603 lines of professional documentation)
-- 🧪 **[TESTING.md](TESTING.md)** - Comprehensive testing guide and validation procedures
+- 🧪 **[TESTING.md](docs/TESTING.md)** - Comprehensive testing guide and validation procedures
 - 🔗 **[WireGuard Official Documentation](https://www.wireguard.com/quickstart/)**
 - 🐳 **[Docker Compose Reference](https://docs.docker.com/compose/)**
 - 🌐 **[Cloudflare API Documentation](https://developers.cloudflare.com/api/)**
