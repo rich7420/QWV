@@ -34,9 +34,6 @@ generate_auto_peer() {
 
 # 處理 PEERS 配置，支援自動偵測
 process_peers_config() {
-    local peers_config="${WIREGUARD_PEERS:-auto}"
-    local processed_peers=""
-    
     # 載入環境變數
     if [ -f .env ]; then
         set -a  # 自動匯出所有變數
@@ -45,30 +42,39 @@ process_peers_config() {
         set +a
     fi
     
-    # 分割逗號分隔的 peers
-    IFS=',' read -ra PEER_ARRAY <<< "$peers_config"
+    local peers_config="${WIREGUARD_PEERS:-auto}"
+    local processed_peers=""
     
-    for peer in "${PEER_ARRAY[@]}"; do
-        # 移除前後空格
-        peer=$(echo "$peer" | xargs)
+    # 檢查是否包含 auto 關鍵字
+    if echo "$peers_config" | grep -q "auto"; then
+        # 分割逗號分隔的 peers
+        IFS=',' read -ra PEER_ARRAY <<< "$peers_config"
         
-        if [ "$peer" = "auto" ]; then
-            # 自動偵測當前裝置
-            auto_peer=$(generate_auto_peer)
-            if [ -n "$processed_peers" ]; then
-                processed_peers="${processed_peers},${auto_peer}"
+        for peer in "${PEER_ARRAY[@]}"; do
+            # 移除前後空格
+            peer=$(echo "$peer" | xargs)
+            
+            if [ "$peer" = "auto" ]; then
+                # 自動偵測當前裝置
+                auto_peer=$(generate_auto_peer)
+                if [ -n "$processed_peers" ]; then
+                    processed_peers="${processed_peers},${auto_peer}"
+                else
+                    processed_peers="$auto_peer"
+                fi
             else
-                processed_peers="$auto_peer"
+                # 手動指定的名稱
+                if [ -n "$processed_peers" ]; then
+                    processed_peers="${processed_peers},${peer}"
+                else
+                    processed_peers="$peer"
+                fi
             fi
-        else
-            # 手動指定的名稱
-            if [ -n "$processed_peers" ]; then
-                processed_peers="${processed_peers},${peer}"
-            else
-                processed_peers="$peer"
-            fi
-        fi
-    done
+        done
+    else
+        # 沒有 auto 關鍵字，直接使用原始配置
+        processed_peers="$peers_config"
+    fi
     
     echo "$processed_peers"
 }
@@ -85,31 +91,43 @@ setup_environment() {
         return 1
     fi
     
-    # 處理 PEERS 配置
-    processed_peers=$(process_peers_config)
+    # 載入現有環境變數
+    if [ -f .env ]; then
+        set -a
+        # shellcheck disable=SC1091
+        source .env
+        set +a
+    fi
     
-    # 更新 .env 檔案中的 WIREGUARD_PEERS
-    if [ -n "$processed_peers" ]; then
-        # 備份原始 .env
-        cp .env .env.backup
+    # 檢查是否需要處理自動偵測
+    if echo "${WIREGUARD_PEERS:-auto}" | grep -q "auto"; then
+        # 處理 PEERS 配置（僅在包含 auto 時）
+        processed_peers=$(process_peers_config)
         
-        # 更新或添加 WIREGUARD_PEERS
-        if grep -q "^WIREGUARD_PEERS=" .env; then
-            sed -i "s/^WIREGUARD_PEERS=.*/WIREGUARD_PEERS=$processed_peers/" .env
-        else
-            echo "WIREGUARD_PEERS=$processed_peers" >> .env
-        fi
-        
-        echo "✅ 已設定客戶端: $processed_peers"
-        
-        # 如果包含自動偵測，顯示偵測結果
-        if echo "$WIREGUARD_PEERS" | grep -q "auto"; then
+        # 更新 .env 檔案中的 WIREGUARD_PEERS
+        if [ -n "$processed_peers" ]; then
+            # 備份原始 .env
+            cp .env .env.backup
+            
+            # 更新或添加 WIREGUARD_PEERS
+            if grep -q "^WIREGUARD_PEERS=" .env; then
+                sed -i "s/^WIREGUARD_PEERS=.*/WIREGUARD_PEERS=$processed_peers/" .env
+            else
+                echo "WIREGUARD_PEERS=$processed_peers" >> .env
+            fi
+            
+            echo "✅ 已設定客戶端: $processed_peers"
+            
+            # 顯示自動偵測結果
             auto_peer=$(generate_auto_peer)
             echo "🤖 自動偵測裝置: $auto_peer"
             echo "   - 使用者: $(whoami)"
             echo "   - 主機名: $(hostname | cut -d'.' -f1)"
             echo "   - 格式: ${AUTO_PEER_FORMAT:-username-hostname}"
         fi
+    else
+        # 手動設定模式，保持現有配置
+        echo "✅ 已設定客戶端: ${WIREGUARD_PEERS}"
     fi
 }
 
