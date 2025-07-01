@@ -361,11 +361,14 @@ To only route internal network traffic through VPN:
 
 **Method 2️⃣: Terminal Display**
 ```bash
-# SSH to server and display QR Code
+# SSH to server and generate time-limited QR Code
 ./scripts/manage.sh qr john-laptop
 
 # Will display:
-# 📱 Client john-laptop QR Code:
+# 📱 Client john-laptop time-limited QR Code:
+# ⏰ Valid until: 2024-01-01 15:03:45 (3 minutes)
+# 📁 File location: config/peer_john-laptop/peer_john-laptop.png
+# 
 # 💡 How to get QR Code:
 # 1. 📥 Download PNG image:
 #    scp user@192.168.1.100:~/QWV/config/peer_john-laptop/peer_john-laptop.png ~/qr-john-laptop.png
@@ -373,6 +376,10 @@ To only route internal network traffic through VPN:
 #    scp user@192.168.1.100:~/QWV/config/peer_john-laptop/peer_john-laptop.conf ~/wireguard-john-laptop.conf
 # 3. 📱 Terminal QR Code:
 # [ASCII QR Code display]
+# 
+# 🗑️ Expires and auto-cleanup after 3 minutes
+# 💡 Extend validity: ./scripts/manage.sh qr john-laptop 10
+# 🔒 Revoke immediately: ./scripts/manage.sh revoke-qr john-laptop
 ```
 
 **Method 3️⃣: Download Configuration File**
@@ -519,17 +526,30 @@ WIREGUARD_PEERS=laptop,phone,tablet,work_computer
 # - 🐳 Docker security configuration check
 # - 💡 Six security recommendations
 
-# 📱 Display QR code (enhanced)
-./scripts/manage.sh qr <client_name>
-# Shows multiple access methods and cross-platform compatible scp commands
+# 📱 Time-limited QR code generation (enhanced)
+./scripts/manage.sh qr <client_name> [minutes]
+# Features:
+# - ⏰ Default 3-minute expiration for enhanced security
+# - 🗑️ Automatic cleanup of expired configurations
+# - 📊 Real-time status tracking
+# Examples:
+#   ./scripts/manage.sh qr phone        # 3-minute expiration (default)
+#   ./scripts/manage.sh qr laptop 10    # 10-minute expiration
+#   ./scripts/manage.sh qr tablet 60    # 1-hour expiration
 
 # 🌐 Secure Web QR code sharing (NEW)
 ./scripts/manage.sh web-qr <client_name> [port]
 # Features:
 # - 🔒 Random token verification
+# - ⏰ Respects QR code expiration settings
 # - 🖥️ Beautiful web interface
 # - ⚠️ Security reminders and usage instructions
 # - 🧹 Automatic temporary file cleanup
+
+# 📊 QR code status management
+./scripts/manage.sh qr-status           # View all QR code statuses
+./scripts/manage.sh revoke-qr <client>  # Immediately revoke QR code
+./scripts/manage.sh cleanup-qr          # Clean up expired QR codes
 ```
 
 ### Monitoring and Debugging

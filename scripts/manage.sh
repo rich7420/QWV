@@ -99,6 +99,28 @@ setup_environment() {
         set +a
     fi
     
+    # 自動檢測並設置正確的 PUID/PGID（如果未設置）
+    current_uid=$(id -u)
+    current_gid=$(id -g)
+    
+    if ! grep -q "^PUID=" .env 2>/dev/null; then
+        echo "PUID=$current_uid" >> .env
+    fi
+    
+    if ! grep -q "^PGID=" .env 2>/dev/null; then
+        echo "PGID=$current_gid" >> .env
+    fi
+    
+    # 確保 PUID/PGID 與當前用戶匹配
+    if [ -f .env ]; then
+        if grep -q "^PUID=" .env; then
+            sed -i "s/^PUID=.*/PUID=$current_uid/" .env
+        fi
+        if grep -q "^PGID=" .env; then
+            sed -i "s/^PGID=.*/PGID=$current_gid/" .env
+        fi
+    fi
+    
     # 檢查是否需要處理自動偵測
     if echo "${WIREGUARD_PEERS:-auto}" | grep -q "auto"; then
         # 處理 PEERS 配置（僅在包含 auto 時）
@@ -141,7 +163,7 @@ usage() {
     echo ""
     echo "使用方法: $0 <command>"
     echo ""
-    echo "可用指令:"
+    echo "📋 基本服務管理:"
     echo "  setup        設定環境變數（支援自動偵測裝置名稱）"
     echo "  start        啟動 VPN 服務"
     echo "  stop         停止 VPN 服務"
@@ -151,8 +173,15 @@ usage() {
     echo "  peers        顯示連線的客戶端"
     echo "  update       更新服務映像檔"
     echo "  backup       備份設定檔"
-    echo "  qr <peer>    顯示客戶端 QR Code"
-    echo "  web-qr <peer> [port]  啟動 Web QR Code 分享服務"
+    echo ""
+    echo "📱 QR Code 時效性管理:"
+    echo "  qr <peer> [minutes]         生成時效性 QR Code（預設3分鐘）"
+    echo "  web-qr <peer> [port]        啟動安全 Web QR Code 服務"
+    echo "  qr-status                   查看所有 QR Code 狀態"
+    echo "  revoke-qr <peer>            立即撤銷 QR Code"
+    echo "  cleanup-qr                  清理過期的 QR Code"
+    echo ""
+    echo "🔍 系統檢查:"
     echo "  check        檢查系統狀態"
     echo "  security     檢查專案安全性設定"
     echo "  validate     執行專案完整驗證"
@@ -162,12 +191,19 @@ usage() {
     echo "  支援格式: username, hostname, username-hostname, hostname-username"
     echo "  混合模式: WIREGUARD_PEERS=auto,work_laptop,family_tablet"
     echo ""
-    echo "範例:"
-    echo "  $0 setup           # 設定環境變數並自動偵測裝置"
-    echo "  $0 start           # 啟動 VPN 服務"
-    echo "  $0 qr john-laptop  # 顯示自動偵測的客戶端 QR Code"
-    echo "  $0 web-qr laptop 8080  # 啟動Web服務分享QR Code（含安全token）"
-    echo "  $0 security        # 檢查專案安全性設定"
+    echo "📋 QR Code 時效性範例:"
+    echo "  $0 qr phone             # 生成3分鐘有效期的 QR Code（預設）"
+    echo "  $0 qr laptop 5          # 生成5分鐘有效期的 QR Code"
+    echo "  $0 qr tablet 60         # 生成1小時（60分鐘）有效期的 QR Code"
+    echo "  $0 qr-status            # 查看所有 QR Code 狀態"
+    echo "  $0 revoke-qr phone      # 立即撤銷手機的 QR Code"
+    echo ""
+    echo "🌐 Web QR Code 範例:"
+    echo "  $0 web-qr laptop 8080   # 啟動Web服務分享QR Code（含安全token）"
+    echo ""
+    echo "🔧 系統管理範例:"
+    echo "  $0 setup                # 設定環境變數並自動偵測裝置"
+    echo "  $0 security             # 檢查專案安全性設定"
     echo ""
 }
 
@@ -289,37 +325,29 @@ backup_config() {
 
 show_qr() {
     peer_name="$1"
+    ttl_minutes="${2:-3}"  # 預設3分鐘過期
+    
     if [ -z "$peer_name" ]; then
         echo "❌ 請指定客戶端名稱"
-        echo "例如: $0 qr laptop"
+        echo "例如: $0 qr laptop [過期時間分鐘]"
+        echo "      $0 qr laptop 5     # 5分鐘後過期"
+        echo "      $0 qr laptop 60    # 60分鐘後過期"
+        echo "      $0 qr laptop 3     # 3分鐘後過期（預設）"
+        return 1
+    fi
+    
+    # 檢查 TTL 參數是否為數字
+    if ! echo "$ttl_minutes" | grep -E '^[0-9]+$' >/dev/null; then
+        echo "❌ 過期時間必須為數字（分鐘）"
         return 1
     fi
     
     qr_file="config/peer_${peer_name}/peer_${peer_name}.png"
-    if [ -f "$qr_file" ]; then
-        echo "📱 客戶端 ${peer_name} 的 QR Code:"
-        echo "檔案位置: $qr_file"
-        echo ""
-        # 偵測伺服器IP（支援多種系統）
-        server_ip=$(ip route get 8.8.8.8 2>/dev/null | awk '{print $7; exit}' || hostname -I 2>/dev/null | awk '{print $1}' || ifconfig 2>/dev/null | grep -E 'inet.*192\.168\.|inet.*10\.|inet.*172\.' | head -1 | awk '{print $2}' | cut -d: -f2)
-        
-        echo "💡 獲取QR Code的方法："
-        echo "1. 📥 下載PNG圖片："
-        echo "   scp $(whoami)@${server_ip}:$(pwd)/$qr_file ~/qr-${peer_name}.png"
-        echo "2. 📋 複製配置文件："
-        echo "   scp $(whoami)@${server_ip}:$(pwd)/config/peer_${peer_name}/peer_${peer_name}.conf ~/wireguard-${peer_name}.conf"
-        echo ""
-        # 如果系統支援，可以直接顯示 QR code
-        if command -v qrencode >/dev/null 2>&1; then
-            echo "3. 📱 終端機QR Code："
-            qrencode -t ansiutf8 < "config/peer_${peer_name}/peer_${peer_name}.conf"
-        else
-            echo "3. ⚠️  終端機QR Code（需要安裝qrencode）："
-            echo "   sudo apt install qrencode  # Ubuntu/Debian"
-            echo "   brew install qrencode      # macOS"
-        fi
-    else
-        echo "❌ 找不到客戶端 ${peer_name} 的 QR Code"
+    conf_file="config/peer_${peer_name}/peer_${peer_name}.conf"
+    expiry_file="config/peer_${peer_name}/.qr_expiry"
+    
+    if [ ! -f "$qr_file" ] || [ ! -f "$conf_file" ]; then
+        echo "❌ 找不到客戶端 ${peer_name} 的配置"
         echo "可用的客戶端:"
         # 使用 glob 模式替代 ls | grep
         for dir in config/peer_*; do
@@ -328,7 +356,188 @@ show_qr() {
                 echo "  - $peer_name_available"
             fi
         done
+        return 1
     fi
+    
+    # 檢查是否已過期
+    current_time=$(date +%s)
+    if [ -f "$expiry_file" ]; then
+        expiry_time=$(cat "$expiry_file" 2>/dev/null || echo "0")
+        if [ "$current_time" -gt "$expiry_time" ]; then
+            echo "⏰ QR Code 已過期，正在重新生成..."
+            # 移除過期的檔案
+            rm -f "$expiry_file"
+            # 觸發 WireGuard 重新生成配置
+            echo "🔄 重新啟動 WireGuard 服務以生成新配置..."
+            docker restart wireguard >/dev/null 2>&1
+            sleep 5  # 等待服務重啟
+        else
+            # 計算剩餘時間
+            remaining_seconds=$((expiry_time - current_time))
+            remaining_minutes=$((remaining_seconds / 60))
+            remaining_secs=$((remaining_seconds % 60))
+            echo "⏰ QR Code 剩餘有效時間: ${remaining_minutes}分${remaining_secs}秒"
+        fi
+    fi
+    
+    # 設定新的過期時間（轉換分鐘為秒）
+    expiry_time=$((current_time + ttl_minutes * 60))
+    echo "$expiry_time" > "$expiry_file"
+    expiry_date=$(date -d "@$expiry_time" "+%Y-%m-%d %H:%M:%S" 2>/dev/null || date -r "$expiry_time" "+%Y-%m-%d %H:%M:%S" 2>/dev/null || echo "Unknown")
+    
+    echo "📱 客戶端 ${peer_name} 的時效性 QR Code:"
+    echo "⏰ 有效期限: $expiry_date (${ttl_minutes}分鐘)"
+    echo "📁 檔案位置: $qr_file"
+    echo ""
+    
+    # 偵測伺服器IP（支援多種系統）
+    server_ip=$(ip route get 8.8.8.8 2>/dev/null | awk '{print $7; exit}' || hostname -I 2>/dev/null | awk '{print $1}' || ifconfig 2>/dev/null | grep -E 'inet.*192\.168\.|inet.*10\.|inet.*172\.' | head -1 | awk '{print $2}' | cut -d: -f2)
+    
+    echo "💡 獲取QR Code的方法："
+    echo "1. 📥 下載PNG圖片："
+    echo "   scp $(whoami)@${server_ip}:$(pwd)/$qr_file ~/qr-${peer_name}.png"
+    echo "2. 📋 複製配置文件："
+    echo "   scp $(whoami)@${server_ip}:$(pwd)/$conf_file ~/wireguard-${peer_name}.conf"
+    echo "3. 🌐 啟動安全Web服務："
+    echo "   $0 web-qr ${peer_name}"
+    echo ""
+    
+    # 如果系統支援，可以直接顯示 QR code
+    if command -v qrencode >/dev/null 2>&1; then
+        echo "4. 📱 終端機QR Code："
+        qrencode -t ansiutf8 < "$conf_file"
+    else
+        echo "4. ⚠️  終端機QR Code（需要安裝qrencode）："
+        echo "   sudo apt install qrencode  # Ubuntu/Debian"
+        echo "   brew install qrencode      # macOS"
+    fi
+    
+    # 設定自動清理任務
+    echo ""
+    echo "🗑️  過期後將自動清理配置檔案"
+    echo "💡 延長有效期: $0 qr ${peer_name} ${ttl_minutes}"
+    echo "🔒 立即撤銷: $0 revoke-qr ${peer_name}"
+}
+
+revoke_qr() {
+    peer_name="$1"
+    
+    if [ -z "$peer_name" ]; then
+        echo "❌ 請指定要撤銷的客戶端名稱"
+        echo "例如: $0 revoke-qr laptop"
+        return 1
+    fi
+    
+    expiry_file="config/peer_${peer_name}/.qr_expiry"
+    qr_file="config/peer_${peer_name}/peer_${peer_name}.png"
+    conf_file="config/peer_${peer_name}/peer_${peer_name}.conf"
+    
+    if [ ! -d "config/peer_${peer_name}" ]; then
+        echo "❌ 客戶端 ${peer_name} 不存在"
+        return 1
+    fi
+    
+    echo "🔒 撤銷客戶端 ${peer_name} 的 QR Code..."
+    
+    # 設定過期時間為過去（立即過期）
+    past_time=$(($(date +%s) - 1))
+    echo "$past_time" > "$expiry_file"
+    
+    # 移除敏感檔案
+    if [ -f "$qr_file" ]; then
+        rm -f "$qr_file"
+        echo "✅ 已移除 QR Code 圖片"
+    fi
+    
+    if [ -f "$conf_file" ]; then
+        # 備份原始配置
+        backup_file="config/peer_${peer_name}/peer_${peer_name}.conf.revoked.$(date +%s)"
+        mv "$conf_file" "$backup_file"
+        echo "✅ 已撤銷配置檔案（備份為 $(basename "$backup_file")）"
+    fi
+    
+    echo "🔄 重新啟動 WireGuard 服務..."
+    docker restart wireguard >/dev/null 2>&1
+    
+    echo "✅ QR Code 已成功撤銷"
+    echo "💡 如需重新啟用，請使用: $0 qr ${peer_name}"
+}
+
+cleanup_expired_qr() {
+    echo "🧹 清理過期的 QR Code..."
+    
+    current_time=$(date +%s)
+    cleaned_count=0
+    
+    for expiry_file in config/peer_*/.qr_expiry; do
+        if [ -f "$expiry_file" ]; then
+            expiry_time=$(cat "$expiry_file" 2>/dev/null || echo "0")
+            if [ "$current_time" -gt "$expiry_time" ]; then
+                peer_dir=$(dirname "$expiry_file")
+                peer_name=$(basename "$peer_dir" | sed 's/peer_//')
+                
+                echo "⏰ 清理過期的客戶端: $peer_name"
+                
+                # 移除過期的 QR Code 和配置
+                rm -f "$peer_dir"/*.png
+                rm -f "$expiry_file"
+                
+                # 將配置檔案標記為過期
+                if [ -f "$peer_dir/peer_${peer_name}.conf" ]; then
+                    mv "$peer_dir/peer_${peer_name}.conf" "$peer_dir/peer_${peer_name}.conf.expired.$(date +%s)"
+                fi
+                
+                cleaned_count=$((cleaned_count + 1))
+            fi
+        fi
+    done
+    
+    if [ "$cleaned_count" -gt 0 ]; then
+        echo "✅ 已清理 $cleaned_count 個過期的 QR Code"
+        echo "🔄 重新啟動 WireGuard 服務..."
+        docker restart wireguard >/dev/null 2>&1
+    else
+        echo "✅ 沒有過期的 QR Code 需要清理"
+    fi
+}
+
+list_qr_status() {
+    echo "📋 QR Code 狀態總覽:"
+    echo ""
+    
+    current_time=$(date +%s)
+    
+    for peer_dir in config/peer_*; do
+        if [ -d "$peer_dir" ]; then
+            peer_name=$(basename "$peer_dir" | sed 's/peer_//')
+            expiry_file="$peer_dir/.qr_expiry"
+            conf_file="$peer_dir/peer_${peer_name}.conf"
+            qr_file="$peer_dir/peer_${peer_name}.png"
+            
+            echo "👤 客戶端: $peer_name"
+            
+            if [ -f "$expiry_file" ]; then
+                expiry_time=$(cat "$expiry_file" 2>/dev/null || echo "0")
+                expiry_date=$(date -d "@$expiry_time" "+%Y-%m-%d %H:%M:%S" 2>/dev/null || date -r "$expiry_time" "+%Y-%m-%d %H:%M:%S" 2>/dev/null || echo "Unknown")
+                
+                if [ "$current_time" -gt "$expiry_time" ]; then
+                    echo "   ⏰ 狀態: ❌ 已過期 ($expiry_date)"
+                else
+                    remaining_seconds=$((expiry_time - current_time))
+                    remaining_minutes=$((remaining_seconds / 60))
+                    remaining_secs=$((remaining_seconds % 60))
+                    echo "   ⏰ 狀態: ✅ 有效 (剩餘 ${remaining_minutes}分${remaining_secs}秒)"
+                    echo "   📅 過期時間: $expiry_date"
+                fi
+            else
+                echo "   ⏰ 狀態: ⚪ 無時效限制（舊版本）"
+            fi
+            
+            echo "   📁 配置檔案: $([ -f "$conf_file" ] && echo "✅ 存在" || echo "❌ 不存在")"
+            echo "   📱 QR Code: $([ -f "$qr_file" ] && echo "✅ 存在" || echo "❌ 不存在")"
+            echo ""
+        fi
+    done
 }
 
 show_web_qr() {
@@ -342,10 +551,29 @@ show_web_qr() {
     fi
     
     qr_file="config/peer_${peer_name}/peer_${peer_name}.png"
+    expiry_file="config/peer_${peer_name}/.qr_expiry"
+    
+    # 檢查客戶端是否存在
     if [ ! -f "$qr_file" ]; then
         echo "❌ 找不到客戶端 ${peer_name} 的 QR Code"
-        echo "請先確認客戶端存在: ./scripts/manage.sh peers"
+        echo "請先生成 QR Code: $0 qr ${peer_name}"
         return 1
+    fi
+    
+    # 檢查是否已過期
+    current_time=$(date +%s)
+    if [ -f "$expiry_file" ]; then
+        expiry_time=$(cat "$expiry_file" 2>/dev/null || echo "0")
+        if [ "$current_time" -gt "$expiry_time" ]; then
+            echo "❌ QR Code 已過期"
+            echo "請重新生成: $0 qr ${peer_name}"
+            return 1
+                 else
+            remaining_seconds=$((expiry_time - current_time))
+            remaining_minutes=$((remaining_seconds / 60))
+            remaining_secs=$((remaining_seconds % 60))
+            echo "⏰ QR Code 剩餘有效時間: ${remaining_minutes}分${remaining_secs}秒"
+        fi
     fi
     
     # 偵測伺服器IP
@@ -695,10 +923,19 @@ case "${1:-}" in
         backup_config
         ;;
     qr)
-        show_qr "$2"
+        show_qr "$2" "$3"
         ;;
     web-qr)
         show_web_qr "$2" "$3"
+        ;;
+    qr-status)
+        list_qr_status
+        ;;
+    revoke-qr)
+        revoke_qr "$2"
+        ;;
+    cleanup-qr)
+        cleanup_expired_qr
         ;;
     check)
         check_system

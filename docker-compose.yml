@@ -12,8 +12,8 @@ services:
       - SYS_MODULE     # 需要載入核心模組權限
     environment:
       # 使用者和群組 ID（避免檔案權限問題）
-      - PUID=1000
-      - PGID=1000
+      - PUID=${PUID:-1000}
+      - PGID=${PGID:-1000}
       
       # 時區設定（確保日誌時間正確）
       - TZ=Asia/Taipei
